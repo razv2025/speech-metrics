@@ -154,8 +154,9 @@ function stopRecording() {
   if (asrAudioBuf.length > 0) {
     enableDownloadBtn(currentTask);
   }
-  // Send to Praat server for clinical-grade analysis (all tasks)
+  // Log immediately (pending), then send to server to fill in metrics
   if (asrAudioBuf.length > 0) {
+    addPendingLogEntry(currentTask);
     sendToServer(currentTask);
   }
 }
@@ -259,7 +260,7 @@ function _applyServerMetricsToUI(task, d) {
 
 function applyServerResults(task, d) {
   _applyServerMetricsToUI(task, d);
-  addLogEntry(task, d);
+  _fillPendingLogEntry(task, d);
 }
 
 function setBtn(active) {
@@ -1495,7 +1496,7 @@ async function processUploadedAudio() {
   else if (currentTask === 2) { updateTask2(); drawPitchContour(2); }
   else if (currentTask === 3) { updateTask3(); drawPitchContour(3); }
 
-  if (_replayMode) { _replayMode = false; } else { sendToServer(savedTask); }
+  if (_replayMode) { _replayMode = false; } else { addPendingLogEntry(savedTask); sendToServer(savedTask); }
 }
 
 /* ════════════════════════════════════════════
@@ -1626,17 +1627,32 @@ function _logFlatten(task, d) {
   };
 }
 
-function addLogEntry(task, data) {
+// Step 1: create entry immediately with audio data, no metrics yet
+function addPendingLogEntry(task) {
   if (!logDB) return;
   const audioData = (asrAudioBuf && asrAudioBuf.length)
     ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
     : null;
-  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), version: data.version || null, ..._logFlatten(task, data) };
+  const entry = { filename: currentFilename, timestamp: new Date().toISOString() };
   if (audioData) { entry.audioData = audioData; entry.audioSR = asrSampleRate; }
   if (task === 3 && activePassageRef) entry.referenceText = activePassageRef;
   const tx  = logDB.transaction('task' + task, 'readwrite');
   const req = tx.objectStore('task' + task).add(entry);
   req.onsuccess = e => { lastLogId[task] = e.target.result; renderLogTable(task); };
+}
+
+// Step 2: fill in server metrics on the pending entry once the server responds
+function _fillPendingLogEntry(task, data) {
+  if (!logDB || !lastLogId[task]) return;
+  const tx    = logDB.transaction('task' + task, 'readwrite');
+  const store = tx.objectStore('task' + task);
+  const req   = store.get(lastLogId[task]);
+  req.onsuccess = ev => {
+    const entry = ev.target.result;
+    if (!entry) return;
+    Object.assign(entry, _logFlatten(task, data), { version: data.version || null });
+    store.put(entry).onsuccess = () => renderLogTable(task);
+  };
 }
 
 function updateLastLogFilename(task, filename) {
