@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Speech Assessment Tool</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,6 +25,16 @@ body {
 .menu-header {
   text-align: center;
   margin-bottom: 40px;
+}
+.logo-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.logo-svg {
+  width: 80px;
+  height: 80px;
+  filter: drop-shadow(0 0 14px rgba(124,158,248,0.45));
 }
 .menu-header h1 {
   font-size: 2rem;
@@ -510,6 +521,25 @@ canvas { display: block; width: 100%; height: 160px; }
 <!-- ═══ MENU SCREEN ═══ -->
 <div id="menu-screen">
   <div class="menu-header">
+    <div class="logo-wrap">
+      <svg class="logo-svg" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <!-- staff lines -->
+        <line x1="8" y1="28" x2="72" y2="28" stroke="#3d4566" stroke-width="1.5"/>
+        <line x1="8" y1="35" x2="72" y2="35" stroke="#3d4566" stroke-width="1.5"/>
+        <line x1="8" y1="42" x2="72" y2="42" stroke="#3d4566" stroke-width="1.5"/>
+        <line x1="8" y1="49" x2="72" y2="49" stroke="#3d4566" stroke-width="1.5"/>
+        <line x1="8" y1="56" x2="72" y2="56" stroke="#3d4566" stroke-width="1.5"/>
+        <!-- eighth note beam (two notes joined) -->
+        <rect x="46" y="20" width="3" height="26" rx="1.5" fill="#7c9ef8"/>
+        <rect x="28" y="24" width="3" height="22" rx="1.5" fill="#7c9ef8"/>
+        <rect x="28" y="20" width="21" height="4" rx="2" fill="#7c9ef8"/>
+        <!-- note heads -->
+        <ellipse cx="29.5" cy="48" rx="5.5" ry="4" transform="rotate(-12,29.5,48)" fill="#7c9ef8"/>
+        <ellipse cx="47.5" cy="48" rx="5.5" ry="4" transform="rotate(-12,47.5,48)" fill="#7c9ef8"/>
+        <!-- glow -->
+        <ellipse cx="40" cy="40" rx="32" ry="30" fill="none" stroke="#7c9ef8" stroke-width="0.5" opacity="0.15"/>
+      </svg>
+    </div>
     <h1>Speech Assessment Tool</h1>
     <p>Select a task to begin your real-time voice analysis</p>
   </div>
