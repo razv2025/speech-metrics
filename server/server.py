@@ -81,8 +81,9 @@ def _detect_aws_region() -> str:
 
 
 _AWS_REGION = _detect_aws_region()
-_S3_BUCKET: str = ''
-_s3_client = None
+_S3_BUCKET  = 'speech-metrics-storage'
+_S3_PREFIX  = 'public-samples/'
+_s3_client  = None
 
 
 def _get_s3():
@@ -93,34 +94,11 @@ def _get_s3():
 
 
 def _init_s3():
-    global _S3_BUCKET
-    s3 = _get_s3()
     try:
-        acct = boto3.client('sts', region_name=_AWS_REGION).get_caller_identity()['Account']
-        _S3_BUCKET = f'speech-metrics-{acct}'
-    except Exception:
-        import socket
-        _S3_BUCKET = f'speech-metrics-{abs(hash(socket.gethostname())) % 10 ** 8}'
-    try:
-        s3.head_bucket(Bucket=_S3_BUCKET)
-        print(f'S3 bucket ready: {_S3_BUCKET}')
+        _get_s3().head_bucket(Bucket=_S3_BUCKET)
+        print(f'S3 bucket ready: {_S3_BUCKET}/{_S3_PREFIX}')
     except ClientError as exc:
-        code = exc.response['Error']['Code']
-        if code in ('404', 'NoSuchBucket'):
-            kw = {} if _AWS_REGION == 'us-east-1' else {
-                'CreateBucketConfiguration': {'LocationConstraint': _AWS_REGION},
-            }
-            s3.create_bucket(Bucket=_S3_BUCKET, **kw)
-            s3.put_public_access_block(
-                Bucket=_S3_BUCKET,
-                PublicAccessBlockConfiguration={
-                    'BlockPublicAcls': True, 'IgnorePublicAcls': True,
-                    'BlockPublicPolicy': True, 'RestrictPublicBuckets': True,
-                },
-            )
-            print(f'S3 bucket created: {_S3_BUCKET} ({_AWS_REGION})')
-        else:
-            print(f'S3 warning: {exc}')
+        print(f'S3 warning: {exc}')
 
 
 _DB_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'published.db')
@@ -582,7 +560,7 @@ def compute_articulation(transcript: str, reference: str) -> dict:
 async def publish_entry(task_n: int, file: UploadFile = File(...), metadata: str = Form(...)):
     data    = json.loads(metadata)
     audio   = await file.read()
-    s3_key  = f'task{task_n}/{_uuid_mod.uuid4()}.wav'
+    s3_key  = f'{_S3_PREFIX}task{task_n}/{_uuid_mod.uuid4()}.wav'
     _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
     now = datetime.now(timezone.utc).isoformat()
     with _db() as conn:
