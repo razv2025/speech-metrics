@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task 3 — Reading Passage</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<link rel="stylesheet" href="/static/common.css">
+</head>
+<body>
+
+<div id="task-screen">
+  <div class="task-header">
+    <a class="back-btn" href="/">&#8592; Tasks</a>
+    <div class="task-title-block">
+      <h2>Reading Passage</h2>
+      <p>Read the passage below aloud at your natural, comfortable speaking pace.</p>
+    </div>
+  </div>
+
+  <div class="record-row">
+    <button class="record-btn idle" id="record-btn" onclick="toggleRecording()">
+      <span class="pulse-dot"></span>
+      <span id="btn-label">Start Recording</span>
+    </button>
+    <span id="status-text">Ready</span>
+  </div>
+
+  <div id="server-error-banner" style="display:none">
+    <div class="server-error-box">
+      <strong>&#9888; Analysis server not reachable</strong>
+      <p>The Praat analysis server must be reachable before recording.
+         Metric values cannot be computed without it.</p>
+      <button onclick="document.getElementById('server-error-banner').style.display='none'">Dismiss</button>
+    </div>
+  </div>
+
+  <div id="t3-content">
+    <div class="passage-selector">
+      <div class="passage-type-group">
+        <button class="passage-type-btn" id="ptype-word"      onclick="setPassageType('word')">Word</button>
+        <button class="passage-type-btn" id="ptype-sentence"  onclick="setPassageType('sentence')">Sentence</button>
+        <button class="passage-type-btn active" id="ptype-paragraph" onclick="setPassageType('paragraph')">Paragraph</button>
+      </div>
+      <button class="passage-shuffle-btn" onclick="shufflePassage()">&#8635; New</button>
+      <button class="passage-edit-btn" id="passage-edit-btn" onclick="startPassageEdit()">&#9998; Edit</button>
+      <button class="passage-edit-btn active" id="passage-done-btn" onclick="commitPassageEdit()" style="display:none">&#10003; Done</button>
+    </div>
+    <div class="passage-box" id="passage-box">
+      <h3 id="passage-heading">Paragraph — read aloud</h3>
+      <span id="passage-text" onclick="startPassageEdit()">When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow. The rainbow is a division of white light into many beautiful colors. These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon. There is, according to legend, a boiling pot of gold at one end. People look, but no one ever finds it. When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.</span>
+    </div>
+    <div class="canvas-wrap tall">
+      <canvas id="pitch-canvas-3"></canvas>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Mean F0</div>
+        <div class="metric-value" id="t3-meanf0">—</div>
+        <div class="metric-unit">Hz</div>
+        <div class="metric-desc">Average pitch during speech</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Habitual SPL</div>
+        <div class="metric-value" id="t3-hspl">—</div>
+        <div class="metric-unit">dB</div>
+        <div class="metric-desc">Typical comfortable loudness</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">F0 Std Dev</div>
+        <div class="metric-value" id="t3-f0std">—</div>
+        <div class="metric-unit">Hz</div>
+        <div class="metric-desc">Pitch variability during speech</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">CPP</div>
+        <div class="metric-value" id="t3-cpp">—</div>
+        <div class="metric-unit">dB</div>
+        <div class="metric-desc">Harmonic organisation in connected speech</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Mean SPL</div>
+        <div class="metric-value" id="t3-mspl">—</div>
+        <div class="metric-unit">dB</div>
+        <div class="metric-desc">Average loudness during speech</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">SPL Variability</div>
+        <div class="metric-value" id="t3-splvar">—</div>
+        <div class="metric-unit">dB</div>
+        <div class="metric-desc">Loudness modulation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Speech Rate</div>
+        <div class="metric-value" id="t3-rate">—</div>
+        <div class="metric-unit">syl/min</div>
+        <div class="metric-desc">Syllables per minute (estimated)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Prosody</div>
+        <div class="metric-value" id="t3-prosody">—</div>
+        <div class="metric-unit">semitones</div>
+        <div class="metric-desc">Pitch range used during speech</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Articulation</div>
+        <div class="metric-value" id="t3-artic">—</div>
+        <div class="metric-unit">%</div>
+        <div class="metric-desc">Word accuracy vs. passage</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Noise Floor</div>
+        <div class="metric-value" id="t3-noise">—</div>
+        <div class="metric-unit">dB</div>
+        <div class="metric-desc">Ambient background noise level</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Consonant Precision</div>
+        <div class="metric-value" id="t3-consonants">—</div>
+        <div class="metric-unit">%</div>
+        <div class="metric-desc">Consonant accuracy vs. passage</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Avg Pause</div>
+        <div class="metric-value" id="t3-pause">—</div>
+        <div class="metric-unit">sec</div>
+        <div class="metric-desc">Mean inter-speech pause length</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Vowel Space</div>
+        <div class="metric-value" id="t3-vsa">—</div>
+        <div class="metric-unit">kHz²</div>
+        <div class="metric-desc">F1×F2 scatter area; shrinks with vowel centralization</div>
+      </div>
+    </div>
+    <!-- Audio actions: download + upload -->
+    <div class="audio-actions">
+      <button class="action-btn" id="download-btn" onclick="downloadRecording()" disabled>
+        &#8681; Download Recording
+      </button>
+      <span class="audio-actions-sep">or</span>
+      <label class="action-btn" for="upload-input">
+        &#8679; Upload Session ZIP
+        <input class="upload-input" id="upload-input" type="file" multiple
+               accept=".zip,application/zip" onchange="enqueueFiles(this.files,handleAudioUpload)">
+      </label>
+    </div>
+    <!-- Transcript preview -->
+    <div class="transcript-box" id="transcript-box" style="display:none">
+      <div class="transcript-label">Transcript</div>
+      <div class="transcript-text" id="transcript-text"></div>
+    </div>
+    <div class="log-section">
+      <div class="log-header">
+        <span class="log-title">Recent Analyses</span>
+        <div class="log-btns">
+          <button class="log-action-btn" id="log-delete-3" onclick="deleteSelected(3)" disabled>&#128465; Delete Selected</button>
+          <button class="log-action-btn" id="log-export-3" onclick="exportLogTSV(3)" disabled>&#8595; Export TSV</button>
+        </div>
+      </div>
+      <div id="log-table-3"></div>
+    </div>
+  </div>
+</div>
+
+<script>const CURRENT_TASK = 3;</script>
+<script src="/static/common.js"></script>
+</body>
+</html>

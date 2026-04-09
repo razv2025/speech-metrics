@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from scipy.fft import fft, ifft
 from scipy.spatial import ConvexHull
 
@@ -47,6 +48,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # Whisper loaded lazily on first Task-3 request to avoid delaying startup
 _whisper_model = None
@@ -469,10 +473,29 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/")
-def serve_ui():
-    path = os.path.join(os.path.dirname(__file__), "..", "index.html")
+def _html(name):
+    path = os.path.join(os.path.dirname(__file__), "..", name)
     return FileResponse(os.path.realpath(path), media_type="text/html")
+
+
+@app.get("/")
+def serve_menu():
+    return _html("index.html")
+
+
+@app.get("/task1")
+def serve_task1():
+    return _html("task1.html")
+
+
+@app.get("/task2")
+def serve_task2():
+    return _html("task2.html")
+
+
+@app.get("/task3")
+def serve_task3():
+    return _html("task3.html")
 
 
 @app.post("/analyze/task1")
