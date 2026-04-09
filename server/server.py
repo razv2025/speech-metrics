@@ -644,18 +644,18 @@ def serve_menu():
 
 
 @app.get("/sustained-phonation")
-def serve_task1():
-    return _html("task1.html")
+def serve_sustained_phonation():
+    return _html("sustained-phonation.html")
 
 
 @app.get("/pitch-glides")
-def serve_task2():
-    return _html("task2.html")
+def serve_pitch_glides():
+    return _html("pitch-glides.html")
 
 
 @app.get("/reading-passage")
-def serve_task3():
-    return _html("task3.html")
+def serve_reading_passage():
+    return _html("reading-passage.html")
 
 
 @app.post("/analyze/sustained-phonation")
