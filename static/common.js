@@ -1592,6 +1592,25 @@ const LOG_METRICS = {
 
 let logDB = null;
 let lastLogId = { 1: null, 2: null, 3: null };
+const _sortState = { 1: null, 2: null, 3: null }; // null = default (newest first)
+
+function sortLogTable(task, key) {
+  const cur = _sortState[task];
+  if (cur && cur.key === key) {
+    _sortState[task] = cur.dir === 'asc' ? { key, dir: 'desc' } : null;
+  } else {
+    _sortState[task] = { key, dir: 'asc' };
+  }
+  renderLogTable(task);
+}
+
+function _thSort(task, key, label) {
+  const s = _sortState[task];
+  const active = s && s.key === key;
+  const cls    = active ? ' sort-' + s.dir : '';
+  const ind    = active ? (s.dir === 'asc' ? ' ▲' : ' ▼') : '';
+  return '<th class="sortable' + cls + '" onclick="sortLogTable(' + task + ',\'' + key + '\')">' + label + ind + '</th>';
+}
 
 function initLogDB() {
   return new Promise((resolve, reject) => {
@@ -1703,13 +1722,32 @@ function renderLogTable(task) {
     }
     if (expBtn) expBtn.disabled = false;
     const metrics = LOG_METRICS[task];
+
+    // Sort entries
+    const sort = _sortState[task];
+    let display;
+    if (sort) {
+      display = entries.slice().sort((a, b) => {
+        const av = a[sort.key], bv = b[sort.key];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const an = Number(av), bn = Number(bv);
+        const cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : String(av).localeCompare(String(bv));
+        return sort.dir === 'asc' ? cmp : -cmp;
+      });
+    } else {
+      display = entries.slice().reverse(); // newest first (default)
+    }
+
     let html = '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
     html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
-    html += '<th>File</th>';
-    metrics.forEach(m => { html += '<th>' + m.label.replace('\n','<br>') + '</th>'; });
-    html += '<th>Time</th><th>Ver.</th>';
+    html += _thSort(task, 'filename', 'File');
+    metrics.forEach(m => { html += _thSort(task, m.key, m.label.replace('\n', '<br>')); });
+    html += _thSort(task, 'timestamp', 'Time');
+    html += _thSort(task, 'version', 'Ver.');
     html += '</tr></thead><tbody>';
-    entries.slice().reverse().forEach(e => {
+    display.forEach(e => {
       html += '<tr>';
       const playBtn = e.audioData
         ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">↑</button>'

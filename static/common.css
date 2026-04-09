@@ -480,6 +480,9 @@ canvas { display: block; width: 100%; height: 160px; }
 .log-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #252836; }
 .log-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
 .log-table th { background: #13151f; color: #888ea8; padding: 7px 10px; text-align: center; white-space: pre; border-bottom: 1px solid #252836; font-weight: 600; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.log-table th.sortable { cursor: pointer; user-select: none; }
+.log-table th.sortable:hover { color: #c8cedf; }
+.log-table th.sort-asc, .log-table th.sort-desc { color: #7c9ef8; }
 .log-table td { padding: 6px 10px; border-bottom: 1px solid #1c1f2e; text-align: center; color: #c5cae9; white-space: nowrap; }
 .log-table tbody tr:last-child td { border-bottom: none; }
 .log-table tbody tr:hover td { background: #1e2233; }
