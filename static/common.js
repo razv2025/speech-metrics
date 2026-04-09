@@ -55,6 +55,18 @@ const SERVER_URL      = ''; // relative — HTML and API served from same origin
 /* ════════════════════════════════════════════
    SESSION RESET
 ════════════════════════════════════════════ */
+function _defaultFilename(task) {
+  const now = new Date();
+  const ts  = now.getFullYear() + '-'
+    + String(now.getMonth() + 1).padStart(2, '0') + '-'
+    + String(now.getDate()).padStart(2, '0') + '_'
+    + String(now.getHours()).padStart(2, '0') + '-'
+    + String(now.getMinutes()).padStart(2, '0');
+  const names = { 1: 'phonation', 2: 'pitch-glides', 3: 'reading' };
+  const ext   = task === 3 ? 'zip' : 'wav';
+  return `task${task}_${names[task]}_${ts}.${ext}`;
+}
+
 function resetSession() {
   f0History = []; splHistory = []; rmsHistory = []; cppHistory = []; noiseHistory = []; hnrHistory = [];
   formantHistory = []; pauseDurations = [];
@@ -67,7 +79,7 @@ function resetSession() {
   minF0 = Infinity; maxF0 = -Infinity;
   sessionStart = null; lastHnrCorr = null;
   asrAudioBuf = [];
-  currentFilename = 'New recording';
+  currentFilename = _defaultFilename(CURRENT_TASK);
   const dlId  = CURRENT_TASK === 3 ? 'download-btn' : 'download-btn-' + CURRENT_TASK;
   const dlBtn = document.getElementById(dlId);
   if (dlBtn) dlBtn.disabled = true;
@@ -1272,7 +1284,7 @@ function downloadAudioWAV(taskN) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  const fname = 'task' + taskN + '_recording.wav';
+  const fname = _defaultFilename(taskN);
   a.download  = fname;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -1296,7 +1308,7 @@ async function downloadRecording() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  const fname = 'reading_session.zip';
+  const fname = _defaultFilename(3);
   a.download  = fname;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -1379,12 +1391,14 @@ async function handleAudioUploadRaw(file) {
 async function processUploadedAudio() {
   sampleRate = asrSampleRate;
 
-  const savedBuf  = asrAudioBuf;
-  const savedSR   = asrSampleRate;
-  const savedTask = currentTask;
+  const savedBuf      = asrAudioBuf;
+  const savedSR       = asrSampleRate;
+  const savedTask     = currentTask;
+  const savedFilename = currentFilename;
   resetSession();
-  asrAudioBuf   = savedBuf;
-  asrSampleRate = savedSR;
+  asrAudioBuf     = savedBuf;
+  asrSampleRate   = savedSR;
+  currentFilename = savedFilename;
   enableDownloadBtn(savedTask);
 
   sessionStart = Date.now() - (asrAudioBuf.length / asrSampleRate) * 1000;
@@ -1511,13 +1525,21 @@ async function _drainUploadQueue() {
 ════════════════════════════════════════════ */
 function setupDragDrop() {
   const task = CURRENT_TASK;
-  const el = document.getElementById('t' + task + '-content');
-  if (!el) return;
-  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
-  el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over'); });
-  el.addEventListener('drop', e => {
+  let dragDepth = 0;
+  document.addEventListener('dragover', e => { e.preventDefault(); });
+  document.addEventListener('dragenter', e => {
     e.preventDefault();
-    el.classList.remove('drag-over');
+    dragDepth++;
+    document.body.classList.add('drag-over');
+  });
+  document.addEventListener('dragleave', () => {
+    dragDepth--;
+    if (dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('drag-over'); }
+  });
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('drag-over');
     const files = [...e.dataTransfer.files];
     if (task === 3) {
       const zips = files.filter(f => f.name.toLowerCase().endsWith('.zip') || f.type === 'application/zip');
@@ -1672,7 +1694,7 @@ function renderLogTable(task) {
     entries.slice().reverse().forEach(e => {
       html += '<tr>';
       const playBtn = e.audioData
-        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">▶</button>'
+        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">↑</button>'
         : '';
       const dlLabel = task === 3 ? '↓ zip' : '↓ wav';
       const dlTitle = task === 3 ? 'Download ZIP (audio + passage)' : 'Download WAV';
@@ -1814,7 +1836,7 @@ async function replayLogEntry(task, id) {
   if (!logDB) return;
 
   const btn = document.querySelector('.log-play-btn[data-id="' + id + '"][data-task="' + task + '"]');
-  if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
+  if (btn) { btn.disabled = true; btn.textContent = '↻'; btn.classList.add('loading'); }
 
   try {
     const entry = await new Promise((resolve, reject) => {
@@ -1873,7 +1895,7 @@ async function replayLogEntry(task, id) {
     renderLogTable(task);
   } catch (err) {
     console.error('Re-analysis failed:', err);
-    if (btn) { btn.disabled = false; btn.textContent = '▶'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↑'; btn.classList.remove('loading'); }
   }
 }
 
