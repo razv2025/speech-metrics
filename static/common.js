@@ -2162,6 +2162,9 @@ function renderLogTable(task) {
       // Filename column
       if (isPub) {
         html += '<td class="log-filename log-filename-pub" title="' + _escHtml(e.filename || '') + '">' + _escHtml(e.filename || '—') + '</td>';
+      } else if (hasPub) {
+        const fname = _escHtml(e.filename || '—');
+        html += '<td class="log-filename log-filename-pub" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       } else {
         const fname = _escHtml(e.filename || '—');
         html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
