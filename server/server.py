@@ -508,5 +508,12 @@ if __name__ == "__main__":
     # Pre-load Whisper at startup so the first request isn't slow
     get_whisper()
     port = int(os.environ.get("PORT", 8765))
-    print(f"Starting speech metrics server on http://0.0.0.0:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    _dir = os.path.dirname(__file__)
+    ssl_keyfile  = os.path.join(_dir, "key.pem")
+    ssl_certfile = os.path.join(_dir, "cert.pem")
+    use_ssl = os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile)
+    proto = "https" if use_ssl else "http"
+    print(f"Starting speech metrics server on {proto}://0.0.0.0:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info",
+                ssl_keyfile=ssl_keyfile  if use_ssl else None,
+                ssl_certfile=ssl_certfile if use_ssl else None)

@@ -35,3 +35,6 @@ backup_v1/
 
 # Excel
 *.xlsx
+
+# SSL certificates (stay on server only)
+*.pem

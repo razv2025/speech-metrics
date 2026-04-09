@@ -923,7 +923,7 @@ const CONTOUR_CAP     = 300;
 const JITTER_WIN      = 30;
 const SNR_GATE_DB     = 10;  // frame must be ≥10 dB above noise floor to be "speech"
 const CPP_VOICE_THRESH = 1.0; // minimum CPP (dB) for a frame to count as voiced human speech
-const SERVER_URL      = 'http://98.87.120.209:8765'; // Praat/Whisper analysis server (AWS EC2)
+const SERVER_URL      = ''; // relative — HTML and API served from same origin
 
 /* ════════════════════════════════════════════
    NAVIGATION
@@ -1115,7 +1115,7 @@ async function sendToServer(task) {
   }
 }
 
-function applyServerResults(task, d) {
+function _applyServerMetricsToUI(task, d) {
   const set = (id, val, dec) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1157,6 +1157,10 @@ function applyServerResults(task, d) {
       showArticResult(d.articulation_pct ?? null, d.consonant_precision_pct ?? null, d.transcript ?? '');
     }
   }
+}
+
+function applyServerResults(task, d) {
+  _applyServerMetricsToUI(task, d);
   addLogEntry(task, d);
 }
 
@@ -2456,7 +2460,7 @@ async function processUploadedAudio() {
   else if (currentTask === 3) { updateTask3(); drawPitchContour(3); }
 
   // Send to Praat server for clinical-grade analysis
-  sendToServer(savedTask);
+  if (_replayMode) { _replayMode = false; } else { sendToServer(savedTask); }
 }
 
 /* ════════════════════════════════════════════
@@ -2464,6 +2468,7 @@ async function processUploadedAudio() {
 ════════════════════════════════════════════ */
 let _uploadQueue = [];
 let _uploadBusy  = false;
+let _replayMode  = false; // when true, processUploadedAudio skips sendToServer
 
 function enqueueFiles(fileList, handler) {
   for (const f of fileList) _uploadQueue.push({ file: f, handler });
@@ -2785,7 +2790,6 @@ function renameLogEntry(cell, task, id) {
 async function replayLogEntry(task, id) {
   if (!logDB) return;
 
-  // Disable the play button immediately
   const btn = document.querySelector('.log-play-btn[data-id="' + id + '"][data-task="' + task + '"]');
   if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
 
@@ -2798,24 +2802,45 @@ async function replayLogEntry(task, id) {
     });
     if (!entry || !entry.audioData) throw new Error('No audio stored for this entry');
 
-    // Send stored WAV to server
+    // Decode WAV → set globals so local DSP (histograms, pitch contour) can run
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await tempCtx.decodeAudioData(entry.audioData.slice(0));
+    await tempCtx.close();
+    const mono = new Float32Array(decoded.length);
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      const ch = decoded.getChannelData(c);
+      for (let i = 0; i < mono.length; i++) mono[i] += ch[i];
+    }
+    for (let i = 0; i < mono.length; i++) mono[i] /= decoded.numberOfChannels;
+    asrAudioBuf   = Array.from(mono);
+    asrSampleRate = entry.audioSR || decoded.sampleRate;
+    currentFilename = entry.filename || 'replay';
+
+    // Send stored WAV to server and run local DSP in parallel
     const blob = new Blob([entry.audioData], { type: 'audio/wav' });
     const form = new FormData();
     form.append('file', blob, 'recording.wav');
     const refText = entry.referenceText || (task === 3 ? activePassageRef : null);
     if (task === 3 && refText) form.append('reference_text', refText);
+    const serverPromise = fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form })
+      .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
 
-    const resp = await fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form });
-    if (!resp.ok) throw new Error(`Server returned HTTP ${resp.status}`);
-    const d = await resp.json();
+    // Run local DSP (updates histograms, pitch contour, local metric displays)
+    // Use _replayMode flag to prevent processUploadedAudio from calling sendToServer
+    _replayMode = true;
+    await processUploadedAudio();
 
-    // Merge new metrics into existing entry, preserving filename/timestamp/audio
+    // Apply server results to UI (metrics, scales, articulation)
+    const d = await serverPromise;
+    _applyServerMetricsToUI(task, d);
+    setStatus('Analysis complete (Praat)', false);
+
+    // Update existing DB entry with new metrics
     const newMetrics = _logFlatten(task, d);
     if (task === 3 && !refText) {
-      delete newMetrics.articulation_pct;       // can't compute without reference
+      delete newMetrics.articulation_pct;
       delete newMetrics.consonant_precision_pct;
     }
-
     await new Promise((resolve, reject) => {
       const tx    = logDB.transaction('task' + task, 'readwrite');
       const store = tx.objectStore('task' + task);
@@ -2829,7 +2854,7 @@ async function replayLogEntry(task, id) {
       req.onerror = reject;
     });
 
-    renderLogTable(task); // re-render to show updated metrics
+    renderLogTable(task);
   } catch (err) {
     console.error('Re-analysis failed:', err);
     if (btn) { btn.disabled = false; btn.textContent = '▶'; }
