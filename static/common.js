@@ -64,7 +64,7 @@ function _defaultFilename(task) {
     + String(now.getMinutes()).padStart(2, '0');
   const names = { 1: 'phonation', 2: 'pitch-glides', 3: 'reading' };
   const ext   = task === 3 ? 'zip' : 'wav';
-  return `task${task}_${names[task]}_${ts}.${ext}`;
+  return `${names[task]}_${ts}.${ext}`;
 }
 
 function resetSession() {
@@ -1723,6 +1723,7 @@ function setupDragDrop() {
 ════════════════════════════════════════════ */
 const LOG_METRICS = {
   1: [
+    { key: 'duration_s',     label: 'Duration\n(s)',    dec: 1 },
     { key: 'f0_mean_hz',     label: 'F0 Mean\n(Hz)',    dec: 1 },
     { key: 'spl_mean_db',    label: 'SPL\n(dB)',        dec: 1 },
     { key: 'mpt_s',          label: 'MPT\n(s)',         dec: 1 },
@@ -1733,12 +1734,14 @@ const LOG_METRICS = {
     { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
   ],
   2: [
+    { key: 'duration_s',     label: 'Duration\n(s)',    dec: 1 },
     { key: 'f0_min_hz',      label: 'F0 Min\n(Hz)',     dec: 1 },
     { key: 'f0_max_hz',      label: 'F0 Max\n(Hz)',     dec: 1 },
     { key: 'f0_range_st',    label: 'F0 Range\n(ST)',   dec: 1 },
     { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
   ],
   3: [
+    { key: 'duration_s',              label: 'Duration\n(s)',    dec: 1 },
     { key: 'f0_mean_hz',              label: 'F0 Mean\n(Hz)',    dec: 1 },
     { key: 'f0_std_hz',               label: 'F0 Std\n(Hz)',     dec: 1 },
     { key: 'cpp_db',                  label: 'CPP\n(dB)',        dec: 1 },
@@ -1818,7 +1821,8 @@ function addPendingLogEntry(task) {
   const audioData = (asrAudioBuf && asrAudioBuf.length)
     ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
     : null;
-  const entry = { filename: currentFilename, timestamp: new Date().toISOString() };
+  const duration_s = asrAudioBuf.length / asrSampleRate;
+  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), duration_s };
   if (audioData) { entry.audioData = audioData; entry.audioSR = asrSampleRate; }
   if (task === 3 && activePassageRef) entry.referenceText = activePassageRef;
   const tx  = logDB.transaction('task' + task, 'readwrite');
