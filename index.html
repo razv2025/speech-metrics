@@ -494,6 +494,8 @@ canvas { display: block; width: 100%; height: 160px; }
 .log-play-btn { background: none; border: none; color: #7c9ef8; cursor: pointer; font-size: 0.8rem; padding: 0 0 0 5px; line-height: 1; opacity: 0.65; transition: opacity 0.15s, color 0.15s; vertical-align: middle; }
 .log-play-btn:hover:not(:disabled) { opacity: 1; color: #a8c0ff; }
 .log-play-btn:disabled { opacity: 0.25; cursor: default; }
+.log-dl-btn { background: none; border: 1px solid #3a3f5c; border-radius: 4px; color: #7c9ef8; cursor: pointer; font-size: 0.75rem; padding: 1px 7px; line-height: 1.4; opacity: 0.75; transition: opacity 0.15s, border-color 0.15s; vertical-align: middle; margin-left: 4px; }
+.log-dl-btn:hover { opacity: 1; border-color: #7c9ef8; }
 .log-table td.log-ts { color: #666d88; font-size: 0.7rem; }
 .log-empty { color: #555975; font-size: 0.8rem; padding: 14px 0; text-align: center; margin: 0; }
 /* Drag-and-drop */
@@ -2655,7 +2657,7 @@ function renderLogTable(task) {
         ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">▶</button>'
         : '';
       const dlBtn = e.audioData
-        ? '<button class="log-play-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="Download audio">↓</button>'
+        ? '<button class="log-dl-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="Download ZIP">↓ zip</button>'
         : '';
       html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + dlBtn + '</td>';
       const fname = _escHtml(e.filename || '—');
@@ -2723,15 +2725,18 @@ function downloadLogAudio(event, task, id) {
   event.stopPropagation();
   if (!logDB) return;
   const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).get(id);
-  req.onsuccess = e => {
+  req.onsuccess = async e => {
     const entry = e.target.result;
     if (!entry || !entry.audioData) return;
-    const blob = new Blob([entry.audioData], { type: 'audio/wav' });
+    const zip  = new JSZip();
+    zip.file('recording.wav', entry.audioData);
+    if (entry.referenceText) zip.file('passage.txt', entry.referenceText);
+    const blob = await zip.generateAsync({ type: 'blob' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    const name = entry.filename || 'recording';
-    a.download = name.endsWith('.wav') ? name : name + '.wav';
+    const base = (entry.filename || 'recording').replace(/\.(wav|zip)$/i, '');
+    a.download = base + '.zip';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
