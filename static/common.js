@@ -96,6 +96,11 @@ function cycleViewFilter(task) {
   renderLogTable(task);
 }
 
+function setViewFilter(task, f) {
+  _pubFilter[task] = f;
+  renderLogTable(task);
+}
+
 async function publishEntry(task, localId) {
   if (!logDB) return;
   const btn = document.querySelector(`.log-pub-btn[data-id="${localId}"][data-task="${task}"]`);
@@ -2103,11 +2108,16 @@ function renderLogTable(task) {
       display = display.slice().reverse();
     }
 
-    // Filter header label
+    // Filter toggle bar (above table)
     const filterLabel = { all: '🌐 All', mine: '👤 Mine', published: '🌐 Published' }[filter];
+    const filterBtns = ['all', 'mine', 'published'].map(f => {
+      const labels = { all: '🌐 All', mine: '👤 Mine', published: '🌐 Published' };
+      const active = f === filter ? ' log-filter-btn-active' : '';
+      return '<button class="log-filter-btn' + active + '" onclick="setViewFilter(' + task + ',\'' + f + '\')">' + labels[f] + '</button>';
+    }).join('');
 
-    let html = '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
-    html += '<th class="pub-filter-th sortable" onclick="cycleViewFilter(' + task + ')" title="Click to filter by visibility">' + filterLabel + '</th>';
+    let html = '<div class="log-filter-bar">' + filterBtns + '</div>';
+    html += '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
     if (filter !== 'published') {
       html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
     } else {
