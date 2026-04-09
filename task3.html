@@ -133,18 +133,6 @@
         <div class="metric-desc">F1×F2 scatter area; shrinks with vowel centralization</div>
       </div>
     </div>
-    <!-- Audio actions: download + upload -->
-    <div class="audio-actions">
-      <button class="action-btn" id="download-btn" onclick="downloadRecording()" disabled>
-        &#8681; Download Recording
-      </button>
-      <span class="audio-actions-sep">or</span>
-      <label class="action-btn" for="upload-input">
-        &#8679; Upload Session ZIP
-        <input class="upload-input" id="upload-input" type="file" multiple
-               accept=".zip,application/zip" onchange="enqueueFiles(this.files,handleAudioUpload)">
-      </label>
-    </div>
     <!-- Transcript preview -->
     <div class="transcript-box" id="transcript-box" style="display:none">
       <div class="transcript-label">Transcript</div>

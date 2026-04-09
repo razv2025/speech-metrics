@@ -196,9 +196,32 @@ body {
   border-radius: 12px;
   margin-bottom: 24px;
   overflow: hidden;
+  position: relative;
 }
 canvas { display: block; width: 100%; height: 160px; }
 .canvas-wrap.tall canvas { height: 180px; }
+.canvas-play-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(124,158,248,0.5);
+  background: rgba(26,29,39,0.85);
+  color: #7c9ef8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.15s, border-color 0.15s;
+  z-index: 10;
+  white-space: nowrap;
+}
+.canvas-play-btn:hover:not(:disabled) { background: rgba(124,158,248,0.2); border-color: #7c9ef8; }
+.canvas-play-btn:disabled { opacity: 0.3; cursor: default; }
 
 /* Passage type selector */
 .passage-selector {

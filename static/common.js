@@ -80,6 +80,7 @@ function resetSession() {
   sessionStart = null; lastHnrCorr = null;
   asrAudioBuf = [];
   currentFilename = _defaultFilename(CURRENT_TASK);
+  _resetPlaybackState();
   const dlId  = CURRENT_TASK === 3 ? 'download-btn' : 'download-btn-' + CURRENT_TASK;
   const dlBtn = document.getElementById(dlId);
   if (dlBtn) dlBtn.disabled = true;
@@ -153,6 +154,9 @@ function stopRecording() {
   // Enable download for current task
   if (asrAudioBuf.length > 0) {
     enableDownloadBtn(currentTask);
+    _enablePlaybackBtn();
+    if (currentTask === 1) drawFullWaveform(null);
+    else drawPitchContour(currentTask, null);
   }
   // Log immediately (pending), then send to server to fill in metrics
   if (asrAudioBuf.length > 0) {
@@ -189,7 +193,7 @@ function clearMetrics(task) {
 
 async function sendToServer(task) {
   setPendingMetrics(task);
-  setStatus('Analysing with Praat\u2026', false);
+  setStatus('Analyzing with Praat\u2026', false);
   try {
     const wav  = encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate);
     const blob = new Blob([wav], { type: 'audio/wav' });
@@ -204,7 +208,7 @@ async function sendToServer(task) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     applyServerResults(task, data);
-    setStatus('Analysis complete (Praat)', false);
+    setStatus('Analysis complete', false);
     document.getElementById('server-error-banner').style.display = 'none';
   } catch (err) {
     console.error('Praat server error:', err);
@@ -595,7 +599,7 @@ function drawWaveform() {
 /* ════════════════════════════════════════════
    CANVAS — PITCH CONTOUR
 ════════════════════════════════════════════ */
-function drawPitchContour(taskN) {
+function drawPitchContour(taskN, progress = null) {
   const canvas = document.getElementById('pitch-canvas-' + taskN);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -664,6 +668,16 @@ function drawPitchContour(taskN) {
     const lx = Math.min(x + 9, W - label.length * 7.5);
     ctx.fillText(label, lx, y - 8);
     break;
+  }
+
+  // Playback cursor
+  if (progress !== null) {
+    const cx = progress * W;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
   }
 }
 
@@ -1481,7 +1495,7 @@ async function processUploadedAudio() {
 
     if (i % BATCH === BATCH - 1) {
       const pct = Math.round((i / totalFrames) * 100);
-      setStatus(`Analysing\u2026 ${pct}%`, false);
+      setStatus(`Analyzing\u2026 ${pct}%`, false);
       if      (currentTask === 1) updateTask1();
       else if (currentTask === 2) { updateTask2(); drawPitchContour(2); }
       else if (currentTask === 3) { updateTask3(); drawPitchContour(3); }
@@ -1498,6 +1512,9 @@ async function processUploadedAudio() {
   else if (currentTask === 2) { updateTask2(); drawPitchContour(2); }
   else if (currentTask === 3) { updateTask3(); drawPitchContour(3); }
 
+  _enablePlaybackBtn();
+  if (currentTask === 1) drawFullWaveform(null);
+
   if (_replayMode) { _replayMode = false; } else { addPendingLogEntry(savedTask); sendToServer(savedTask); }
 }
 
@@ -1507,6 +1524,150 @@ async function processUploadedAudio() {
 let _uploadQueue = [];
 let _uploadBusy  = false;
 let _replayMode  = false;
+
+/* ════════════════════════════════════════════
+   AUDIO PLAYBACK (canvas play button)
+════════════════════════════════════════════ */
+let _pbCtx    = null;   // AudioContext
+let _pbNode   = null;   // AudioBufferSourceNode
+let _pbStart  = 0;      // ctx.currentTime when playback began
+let _pbOffset = 0;      // seconds into audio at start (for pause/resume)
+let _pbDur    = 0;      // total audio duration in seconds
+let _pbAnimId = null;
+let _pbActive = false;
+
+function initAudioPlayback() {
+  const ids = { 1: 'waveform-canvas', 2: 'pitch-canvas-2', 3: 'pitch-canvas-3' };
+  const canvas = document.getElementById(ids[CURRENT_TASK]);
+  if (!canvas) return;
+  const wrap = canvas.closest('.canvas-wrap');
+  if (!wrap) return;
+  const btn = document.createElement('button');
+  btn.id        = 'canvas-play-btn';
+  btn.className = 'canvas-play-btn';
+  btn.title     = 'Play recording';
+  btn.innerHTML = '&#9654; Play';
+  btn.disabled  = true;
+  btn.onclick   = _togglePlayback;
+  wrap.appendChild(btn);
+}
+
+function _enablePlaybackBtn() {
+  const btn = document.getElementById('canvas-play-btn');
+  if (btn) btn.disabled = false;
+}
+
+function _resetPlaybackState() {
+  _pbActive = false;
+  _pbOffset = 0;
+  if (_pbNode)   { try { _pbNode.stop(); } catch(e) {} _pbNode = null; }
+  if (_pbCtx)    { _pbCtx.close(); _pbCtx = null; }
+  if (_pbAnimId) { cancelAnimationFrame(_pbAnimId); _pbAnimId = null; }
+  const btn = document.getElementById('canvas-play-btn');
+  if (btn) { btn.innerHTML = '&#9654; Play'; btn.title = 'Play recording'; btn.disabled = true; }
+}
+
+function _togglePlayback() {
+  if (_pbActive) _pausePlayback(); else _startPlayback();
+}
+
+function _startPlayback() {
+  if (!asrAudioBuf.length) return;
+  const samples = new Float32Array(asrAudioBuf);
+  _pbDur = samples.length / asrSampleRate;
+  if (_pbOffset >= _pbDur) _pbOffset = 0;
+
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  _pbCtx = ctx;
+  const audioBuf = ctx.createBuffer(1, samples.length, asrSampleRate);
+  audioBuf.getChannelData(0).set(samples);
+
+  const src = ctx.createBufferSource();
+  src.buffer = audioBuf;
+  src.connect(ctx.destination);
+  src.start(0, _pbOffset);
+  src.onended = () => { if (_pbActive) _stopPlayback(); };
+  _pbNode   = src;
+  _pbStart  = ctx.currentTime;
+  _pbActive = true;
+
+  const btn = document.getElementById('canvas-play-btn');
+  if (btn) { btn.innerHTML = '&#9646;&#9646; Pause'; btn.title = 'Pause'; }
+  _pbAnimId = requestAnimationFrame(_pbAnimLoop);
+}
+
+function _pausePlayback() {
+  if (_pbCtx) _pbOffset += _pbCtx.currentTime - _pbStart;
+  _pbActive = false;
+  if (_pbNode)   { try { _pbNode.stop(); } catch(e) {} _pbNode = null; }
+  if (_pbCtx)    { _pbCtx.close(); _pbCtx = null; }
+  if (_pbAnimId) { cancelAnimationFrame(_pbAnimId); _pbAnimId = null; }
+  const btn = document.getElementById('canvas-play-btn');
+  if (btn) { btn.innerHTML = '&#9654; Play'; btn.title = 'Play recording'; }
+  _drawStaticGraph(null);
+}
+
+function _stopPlayback() {
+  _pbOffset = 0;
+  _pbActive = false;
+  if (_pbNode)   { try { _pbNode.stop(); } catch(e) {} _pbNode = null; }
+  if (_pbCtx)    { _pbCtx.close(); _pbCtx = null; }
+  if (_pbAnimId) { cancelAnimationFrame(_pbAnimId); _pbAnimId = null; }
+  const btn = document.getElementById('canvas-play-btn');
+  if (btn) { btn.innerHTML = '&#9654; Play'; btn.title = 'Play recording'; }
+  _drawStaticGraph(null);
+}
+
+function _pbAnimLoop() {
+  if (!_pbActive || !_pbCtx) return;
+  const elapsed  = _pbOffset + (_pbCtx.currentTime - _pbStart);
+  const progress = Math.min(1, elapsed / _pbDur);
+  _drawStaticGraph(progress);
+  if (progress < 1) {
+    _pbAnimId = requestAnimationFrame(_pbAnimLoop);
+  }
+}
+
+function _drawStaticGraph(progress) {
+  if (CURRENT_TASK === 1) drawFullWaveform(progress);
+  else                    drawPitchContour(CURRENT_TASK, progress);
+}
+
+// Draw the full recorded buffer as a static waveform (used after recording + during playback)
+function drawFullWaveform(progress) {
+  const canvas = document.getElementById('waveform-canvas');
+  if (!canvas || !asrAudioBuf.length) return;
+  const ctx = canvas.getContext('2d');
+  const W   = canvas.offsetWidth;
+  const H   = canvas.offsetHeight;
+  canvas.width  = W;
+  canvas.height = H;
+
+  ctx.fillStyle = '#1a1d27';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = '#252836';
+  ctx.lineWidth   = 1;
+  ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+
+  const samples = asrAudioBuf;
+  ctx.strokeStyle = '#5cb85c';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  for (let x = 0; x < W; x++) {
+    const i = Math.floor(x / W * samples.length);
+    const y = (0.5 - samples[i] * 0.4) * H;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  if (progress !== null) {
+    const cx = progress * W;
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+  }
+}
 
 function enqueueFiles(fileList, handler) {
   for (const f of fileList) _uploadQueue.push({ file: f, handler });
@@ -1750,7 +1911,7 @@ function renderLogTable(task) {
     display.forEach(e => {
       html += '<tr>';
       const playBtn = e.audioData
-        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">↑</button>'
+        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyze">↑</button>'
         : '';
       const dlLabel = task === 3 ? '↓ zip' : '↓ wav';
       const dlTitle = task === 3 ? 'Download ZIP (audio + passage)' : 'Download WAV';
@@ -1928,7 +2089,7 @@ async function replayLogEntry(task, id) {
 
     const d = await serverPromise;
     _applyServerMetricsToUI(task, d);
-    setStatus('Analysis complete (Praat)', false);
+    setStatus('Analysis complete', false);
 
     const newMetrics = _logFlatten(task, d);
     if (task === 3 && !refText) {
@@ -1962,4 +2123,5 @@ setStatus('Ready', false);
 initLogDB().then(() => { renderLogTable(CURRENT_TASK); });
 setupDragDrop();
 initScales();
+initAudioPlayback();
 if (CURRENT_TASK === 3) setPassageType('paragraph');
