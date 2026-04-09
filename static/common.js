@@ -634,14 +634,16 @@ function drawPitchContour(taskN, progress = null) {
 
   if (pitchContour.length < 2) return;
 
-  const stepW = W / CONTOUR_CAP;
+  const n     = pitchContour.length;
+  const stepW = W / (n - 1);                              // stretch contour to full canvas width
+  const maxI  = progress !== null ? Math.floor(progress * (n - 1)) : n - 1;
 
-  // Draw voiced segments
+  // Draw voiced segments up to maxI
   ctx.strokeStyle = '#5cb85c';
   ctx.lineWidth   = 2;
   ctx.beginPath();
   let penDown = false;
-  for (let i = 0; i < pitchContour.length; i++) {
+  for (let i = 0; i <= maxI; i++) {
     const f = pitchContour[i];
     const x = i * stepW;
     if (f <= 0) { penDown = false; continue; }
@@ -651,8 +653,8 @@ function drawPitchContour(taskN, progress = null) {
   }
   ctx.stroke();
 
-  // Current pitch dot + label
-  for (let i = pitchContour.length - 1; i >= 0; i--) {
+  // Dot + label at last drawn voiced point
+  for (let i = maxI; i >= 0; i--) {
     const f = pitchContour[i];
     if (f <= 0) continue;
     const x = i * stepW;
@@ -1651,10 +1653,11 @@ function drawFullWaveform(progress) {
   ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
 
   const samples = asrAudioBuf;
+  const maxX    = progress !== null ? Math.floor(progress * W) : W;
   ctx.strokeStyle = '#5cb85c';
   ctx.lineWidth   = 1.5;
   ctx.beginPath();
-  for (let x = 0; x < W; x++) {
+  for (let x = 0; x < maxX; x++) {
     const i = Math.floor(x / W * samples.length);
     const y = (0.5 - samples[i] * 0.4) * H;
     x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
