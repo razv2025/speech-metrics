@@ -2578,7 +2578,7 @@ function addLogEntry(task, data) {
   const audioData = (asrAudioBuf && asrAudioBuf.length)
     ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
     : null;
-  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), ..._logFlatten(task, data) };
+  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), version: data.version || null, ..._logFlatten(task, data) };
   if (audioData) { entry.audioData = audioData; entry.audioSR = asrSampleRate; }
   if (task === 3 && activePassageRef) entry.referenceText = activePassageRef;
   const tx  = logDB.transaction('task' + task, 'readwrite');
@@ -2636,7 +2636,7 @@ function renderLogTable(task) {
     html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
     html += '<th>File</th>';
     metrics.forEach(m => { html += '<th>' + m.label.replace('\n','<br>') + '</th>'; });
-    html += '<th>Time</th>';
+    html += '<th>Time</th><th>Ver.</th>';
     html += '</tr></thead><tbody>';
     entries.slice().reverse().forEach(e => {
       html += '<tr>';
@@ -2655,6 +2655,7 @@ function renderLogTable(task) {
         html += '<td>' + (v != null ? fmt(parseFloat(v), m.dec) : '—') + '</td>';
       });
       html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
+      html += '<td class="log-ts" title="' + _escHtml(e.version||'') + '">' + _escHtml(e.version || '—') + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div>';
@@ -2688,7 +2689,7 @@ function exportLogTSV(task) {
   _getAllLogEntries(task).then(entries => {
     if (!entries.length) return;
     const metrics = LOG_METRICS[task];
-    const headers = ['filename', 'timestamp', ...metrics.map(m => m.key)];
+    const headers = ['filename', 'timestamp', ...metrics.map(m => m.key), 'version'];
     const lines   = [headers.join('\t')];
     entries.forEach(e => {
       lines.push(headers.map(h => { const v = e[h]; return v != null ? String(v) : ''; }).join('\t'));

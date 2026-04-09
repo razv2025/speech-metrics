@@ -30,6 +30,16 @@ from parselmouth.praat import call
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
+import subprocess
+try:
+    _GIT_VERSION = subprocess.check_output(
+        ['git', 'rev-parse', '--short', 'HEAD'],
+        cwd=os.path.dirname(__file__),
+        stderr=subprocess.DEVNULL
+    ).decode().strip()
+except Exception:
+    _GIT_VERSION = 'unknown'
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -469,14 +479,14 @@ def serve_ui():
 async def endpoint_task1(file: UploadFile = File(...)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
-    return analyze_task1(sound)
+    return {**analyze_task1(sound), "version": _GIT_VERSION}
 
 
 @app.post("/analyze/task2")
 async def endpoint_task2(file: UploadFile = File(...)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
-    return analyze_task2(sound)
+    return {**analyze_task2(sound), "version": _GIT_VERSION}
 
 
 @app.post("/analyze/task3")
@@ -487,7 +497,7 @@ async def endpoint_task3(file: UploadFile = File(...),
     result = analyze_task3(sound)
     if reference_text and result.get("transcript"):
         result.update(compute_articulation(result["transcript"], reference_text))
-    return result
+    return {**result, "version": _GIT_VERSION}
 
 
 # ---------------------------------------------------------------------------
