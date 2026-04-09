@@ -2134,9 +2134,6 @@ function renderLogTable(task) {
       const hasPub = !isPub && e.published_id != null;
       html += isPub ? '<tr class="log-row-published">' : '<tr>';
 
-      // Globe badge column
-      html += '<td class="log-pub-cell">' + (isPub || hasPub ? '<span class="pub-badge" title="Published">🌐</span>' : '') + '</td>';
-
       // Actions column
       if (isPub) {
         // Published row: delete + re-analyze (creates new local entry)
