@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: speech-metrics
+    runtime: python
+    buildCommand: pip install -r server/requirements.txt
+    startCommand: python server/server.py
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        generateValue: false
