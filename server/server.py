@@ -17,7 +17,8 @@ import numpy as np
 # Allow Whisper model download through corporate proxies with self-signed certs.
 # This only affects the one-time model download; no external data is sent.
 ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from scipy.fft import fft, ifft
@@ -378,6 +379,7 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
 
     # ── Speech rate + pauses via faster-whisper ────────────────────────────
     speech_rate_wpm = avg_pause_s = None
+    transcript_text = ""
     try:
         model = get_whisper()
         tmp = sound_to_tmpfile(sound)
@@ -387,8 +389,9 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
         finally:
             os.unlink(tmp)
 
+        transcript_text = " ".join(seg.text for seg in segments).strip()
         if segments:
-            all_words = " ".join(seg.text for seg in segments).split()
+            all_words = transcript_text.split()
             speech_time = sum(seg.end - seg.start for seg in segments)
             if speech_time > 1.0 and len(all_words) > 0:
                 speech_rate_wpm = float(len(all_words) / speech_time * 60)
@@ -413,7 +416,39 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
         "noise_floor_db":    noise_floor,
         "avg_pause_s":       avg_pause_s,
         "vsa_hz2":           fmts["vsa_hz2"],
+        "transcript":        transcript_text,
     }
+
+
+# ---------------------------------------------------------------------------
+# Articulation scoring (word accuracy + consonant precision)
+# ---------------------------------------------------------------------------
+def _levenshtein(a: list, b: list) -> int:
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev = dp[0]; dp[0] = i
+        for j in range(1, n + 1):
+            tmp = dp[j]
+            dp[j] = prev if a[i-1] == b[j-1] else 1 + min(prev, dp[j], dp[j-1])
+            prev = tmp
+    return dp[n]
+
+
+def compute_articulation(transcript: str, reference: str) -> dict:
+    """Word accuracy and consonant precision vs. reference passage."""
+    norm  = lambda s: [w for w in __import__('re').sub(r'[^a-z\s]', '', s.lower()).split() if w]
+    ref_w = norm(reference)
+    hyp_w = norm(transcript)
+    artic = max(0.0, min(100.0, (1 - _levenshtein(ref_w, hyp_w) / max(len(ref_w), 1)) * 100))
+
+    vowels = set('aeiou')
+    cons   = lambda s: [c for c in __import__('re').sub(r'[^a-z]', '', s.lower()) if c not in vowels]
+    ref_c  = cons(reference)
+    hyp_c  = cons(transcript)
+    cp     = max(0.0, min(100.0, (1 - _levenshtein(ref_c, hyp_c) / max(len(ref_c), 1)) * 100)) if ref_c else None
+
+    return {"articulation_pct": artic, "consonant_precision_pct": cp}
 
 
 # ---------------------------------------------------------------------------
@@ -445,10 +480,14 @@ async def endpoint_task2(file: UploadFile = File(...)):
 
 
 @app.post("/analyze/task3")
-async def endpoint_task3(file: UploadFile = File(...)):
+async def endpoint_task3(file: UploadFile = File(...),
+                         reference_text: Optional[str] = Form(None)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
-    return analyze_task3(sound)
+    result = analyze_task3(sound)
+    if reference_text and result.get("transcript"):
+        result.update(compute_articulation(result["transcript"], reference_text))
+    return result
 
 
 # ---------------------------------------------------------------------------

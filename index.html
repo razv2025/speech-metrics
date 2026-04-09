@@ -661,16 +661,6 @@ canvas { display: block; width: 100%; height: 160px; }
 
   <!-- Task 3 -->
   <div id="t3-content" style="display:none">
-    <!-- ASR model selector -->
-    <div class="asr-toggle">
-      <span class="asr-toggle-label">Articulation Model</span>
-      <div class="asr-btn-group">
-        <button class="asr-btn active" id="asr-btn-tiny" onclick="setASRModel('whisper-tiny')">Whisper Tiny</button>
-        <button class="asr-btn"        id="asr-btn-base" onclick="setASRModel('whisper-base')">Whisper Base</button>
-      </div>
-      <span class="asr-status" id="asr-status">Select a model</span>
-      <div class="asr-progress" id="asr-progress"><div class="asr-progress-fill" id="asr-progress-fill"></div></div>
-    </div>
     <div class="passage-selector">
       <div class="passage-type-group">
         <button class="passage-type-btn" id="ptype-word"      onclick="setPassageType('word')">Word</button>
@@ -831,12 +821,8 @@ let maxF0         = -Infinity;
 let sessionStart  = null;
 let lastHnrCorr   = null; // last autocorrelation peak value
 
-// ASR state
-let asrModel         = 'whisper-base'; // 'whisper-tiny' | 'whisper-base'
-let asrTranscriber   = null;        // loaded Whisper pipeline instance
-let asrLoadedModelId = null;        // model name currently loaded
-let asrLoading       = false;       // model load in progress
-let asrAudioBuf      = [];          // raw PCM collected during task 3 (at asrSampleRate)
+// Audio buffer state
+let asrAudioBuf      = [];          // raw PCM collected during recording (at asrSampleRate)
 let asrSampleRate    = 44100;       // sample rate of asrAudioBuf
 
 const CAP             = 500;
@@ -878,7 +864,6 @@ function openTask(n) {
 
   if (n === 3) {
     setPassageType('paragraph');
-    setASRModel('whisper-base');
   }
 }
 
@@ -955,10 +940,6 @@ async function startRecording() {
   setStatus('Recording\u2026', false);
   animId = requestAnimationFrame(renderLoop);
 
-  // Start ASR for task 3
-  if (currentTask === 3) {
-    setASRStatus('Recording audio for transcription\u2026', '');
-  }
 }
 
 function stopRecording() {
@@ -980,10 +961,6 @@ function stopRecording() {
   // Enable download for current task
   if (asrAudioBuf.length > 0) {
     enableDownloadBtn(currentTask);
-  }
-  // Finalise ASR for task 3
-  if (currentTask === 3 && asrAudioBuf.length > 0) {
-    runWhisperTranscription();
   }
   // Send to Praat server for clinical-grade analysis (all tasks)
   if (asrAudioBuf.length > 0) {
@@ -1025,6 +1002,7 @@ async function sendToServer(task) {
     const blob = new Blob([wav], { type: 'audio/wav' });
     const form = new FormData();
     form.append('file', blob, 'recording.wav');
+    if (task === 3 && activePassageRef) form.append('reference_text', activePassageRef);
 
     const resp = await fetch(`${SERVER_URL}/analyze/task${task}`, {
       method: 'POST',
@@ -1080,6 +1058,9 @@ function applyServerResults(task, d) {
     if (d.vsa_hz2 !== null && d.vsa_hz2 !== undefined) {
       const el = document.getElementById('t3-vsa');
       if (el) { el.textContent = fmt(d.vsa_hz2 / 1000, 0); updateScale('t3-vsa', d.vsa_hz2 / 1000); }
+    }
+    if (d.transcript || d.articulation_pct !== undefined) {
+      showArticResult(d.articulation_pct ?? null, d.consonant_precision_pct ?? null, d.transcript ?? '');
     }
   }
 }
@@ -1663,22 +1644,6 @@ function computeAvgPause() {
   return arrMean(pauseDurations);
 }
 
-/* ════════════════════════════════════════════
-   CONSONANT PRECISION
-════════════════════════════════════════════ */
-function computeConsonantPrecision(hypothesis) {
-  const VOWELS = new Set('aeiou');
-  const toConsonants = s => s.toLowerCase().replace(/[^a-z]/g, '').split('').filter(c => !VOWELS.has(c)).join('');
-  const ref = toConsonants(activePassageRef);
-  const hyp = toConsonants(hypothesis);
-  if (ref.length === 0) return null;
-  const m = ref.length, n = hyp.length;
-  const dp = Array.from({length: m+1}, (_, i) => new Uint16Array(n+1).map((_, j) => i === 0 ? j : j === 0 ? i : 0));
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = ref[i-1] === hyp[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-  return Math.max(0, (1 - dp[m][n] / m) * 100);
-}
 
 function computeSPLVariability() {
   if (splHistory.length < 5) return null;
@@ -2115,187 +2080,20 @@ function commitPassageEdit() {
   document.getElementById('passage-done-btn').style.display = 'none';
 }
 
-/* ════════════════════════════════════════════
-   WORD ACCURACY  (1 – WER)
-════════════════════════════════════════════ */
-function computeWordAccuracy(hypothesis) {
-  const norm = s => s.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
-  const ref  = norm(activePassageRef);
-  const hyp  = norm(hypothesis);
-  const m = ref.length, n = hyp.length;
-  const dp = [];
-  for (let i = 0; i <= m; i++) {
-    dp[i] = new Array(n + 1).fill(0);
-    dp[i][0] = i;
-  }
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (ref[i-1] === hyp[j-1]) dp[i][j] = dp[i-1][j-1];
-      else dp[i][j] = 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-    }
-  }
-  return Math.max(0, Math.min(100, (1 - dp[m][n] / m) * 100));
-}
 
-/* ════════════════════════════════════════════
-   ASR UI HELPERS
-════════════════════════════════════════════ */
-function setASRStatus(msg, cls) {
-  const el = document.getElementById('asr-status');
-  if (!el) return;
-  el.textContent  = msg;
-  el.className    = 'asr-status' + (cls ? ' ' + cls : '');
-}
-
-function setASRProgress(pct) {
-  const bar  = document.getElementById('asr-progress');
-  const fill = document.getElementById('asr-progress-fill');
-  if (!bar || !fill) return;
-  if (pct < 0) {
-    bar.classList.remove('visible');
-    fill.style.width = '0%';
-  } else {
-    bar.classList.add('visible');
-    fill.style.width = Math.min(100, pct) + '%';
-  }
-}
-
-function showArticResult(score, transcript) {
-  document.getElementById('t3-artic').textContent = score.toFixed(1);
-  updateScale('t3-artic', score);
-
-  const cp = computeConsonantPrecision(transcript);
-  document.getElementById('t3-consonants').textContent = cp !== null ? cp.toFixed(1) : '\u2014';
-  updateScale('t3-consonants', cp);
+function showArticResult(score, cp, transcript) {
+  const articEl = document.getElementById('t3-artic');
+  if (articEl) { articEl.textContent = score !== null ? fmt(score, 1) : '\u2014'; updateScale('t3-artic', score); }
+  const cpEl = document.getElementById('t3-consonants');
+  if (cpEl) { cpEl.textContent = cp !== null ? fmt(cp, 1) : '\u2014'; updateScale('t3-consonants', cp); }
   const box = document.getElementById('transcript-box');
   const txt = document.getElementById('transcript-text');
-  if (box && txt) {
-    box.style.display  = 'block';
-    txt.textContent    = transcript.trim();
+  if (box && txt && transcript) {
+    box.style.display = 'block';
+    txt.textContent   = transcript.trim();
   }
 }
 
-/* ════════════════════════════════════════════
-   ASR MODEL SELECTOR
-════════════════════════════════════════════ */
-function setASRModel(modelId) {
-  if (isRecording) { alert('Stop recording before switching models.'); return; }
-  asrModel = modelId;
-  ['tiny','base'].forEach(k => {
-    const b = document.getElementById('asr-btn-' + k);
-    if (b) b.classList.remove('active');
-  });
-  const btn = document.getElementById('asr-btn-' + (modelId === 'whisper-tiny' ? 'tiny' : 'base'));
-  if (btn) btn.classList.add('active');
-
-  // Reset display
-  document.getElementById('t3-artic').textContent = '—';
-  const box = document.getElementById('transcript-box');
-  if (box) box.style.display = 'none';
-
-  // Load the Whisper model, then retranscribe if audio is waiting
-  const modelName = modelId === 'whisper-tiny' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-base.en';
-  ensureWhisperModel(modelName).then(() => {
-    if (asrAudioBuf.length > 0) runWhisperTranscription();
-  });
-}
-
-/* ════════════════════════════════════════════
-   WHISPER — MAIN THREAD (avoids blob worker
-   import restrictions on file:// origins)
-════════════════════════════════════════════ */
-async function ensureWhisperModel(modelName) {
-  if (asrLoadedModelId === modelName && asrTranscriber) {
-    setASRStatus('Ready', 'ready');
-    return;
-  }
-  // If already loading, wait for it to finish then re-check
-  if (asrLoading) {
-    await new Promise(r => { const t = setInterval(() => { if (!asrLoading) { clearInterval(t); r(); } }, 200); });
-    if (asrLoadedModelId === modelName && asrTranscriber) return;
-  }
-  asrLoading = true;
-
-  setASRStatus('Downloading model... 0%', 'loading');
-  setASRProgress(0);
-  try {
-    const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js');
-    env.allowLocalModels = false;
-    asrTranscriber = await pipeline('automatic-speech-recognition', modelName, {
-      progress_callback: (info) => {
-        if (info.status === 'initiate') {
-          setASRStatus('Downloading model... 0%', 'loading');
-          setASRProgress(0);
-        } else if (info.status === 'progress') {
-          const pct = info.progress != null ? Math.round(info.progress) : 0;
-          setASRStatus(`Downloading model... ${pct}%`, 'loading');
-          setASRProgress(pct);
-        } else if (info.status === 'done' || info.status === 'loading') {
-          setASRStatus('Loading model into memory...', 'loading');
-          setASRProgress(100);
-        }
-      }
-    });
-    asrLoadedModelId = modelName;
-    setASRStatus('Ready', 'ready');
-    setASRProgress(-1);
-  } catch (err) {
-    setASRStatus('Error: ' + (err.message || String(err)), 'error');
-    setASRProgress(-1);
-    console.error('Whisper load error', err);
-  }
-  asrLoading = false;
-}
-
-async function runWhisperTranscription() {
-  if (!asrTranscriber) {
-    setASRStatus('Model not ready — select a model first', 'error');
-    return;
-  }
-  const durationSec = (asrAudioBuf.length / sampleRate).toFixed(1);
-  if (asrAudioBuf.length < sampleRate * 0.5) {
-    setASRStatus('No audio captured — try recording again', 'error');
-    return;
-  }
-  setASRStatus(`Transcribing ${durationSec}s of audio\u2026`, 'loading');
-  await new Promise(r => setTimeout(r, 50));
-  try {
-    const raw16k = await resampleTo16k(new Float32Array(asrAudioBuf), asrSampleRate);
-    // Do not pass language for .en models — it conflicts with their forced tokens
-    const result  = await asrTranscriber(raw16k, {
-      chunk_length_s: 30,
-      stride_length_s: 5,
-    });
-    const text    = result.text || '';
-    if (!text.trim()) {
-      setASRStatus('Whisper returned empty — try speaking louder or closer to mic', 'error');
-      return;
-    }
-    const score = computeWordAccuracy(text);
-    showArticResult(score, text);
-    setASRStatus('Done \u2014 ' + score.toFixed(1) + '% accuracy', 'ready');
-    setASRProgress(-1);
-  } catch (err) {
-    setASRStatus('Transcription error: ' + (err.message || String(err)), 'error');
-    setASRProgress(-1);
-    console.error('Whisper transcription error', err);
-  }
-}
-
-async function resampleTo16k(samples, fromRate) {
-  const toRate   = 16000;
-  const outLen   = Math.ceil(samples.length * toRate / fromRate);
-  const offCtx   = new OfflineAudioContext(1, outLen, toRate);
-  const buf      = offCtx.createBuffer(1, samples.length, fromRate);
-  buf.copyToChannel(samples, 0);
-  const src      = offCtx.createBufferSource();
-  src.buffer     = buf;
-  src.connect(offCtx.destination);
-  src.start();
-  const rendered = await offCtx.startRendering();
-  return rendered.getChannelData(0);
-}
 
 
 /* ════════════════════════════════════════════
@@ -2368,7 +2166,6 @@ async function handleAudioUpload(file) {
   if (!file) return;
   if (passageEditing) commitPassageEdit(); // exit edit mode so passage-text span exists
   setStatus('Reading ' + file.name + '\u2026', false);
-  if (currentTask === 3) setASRStatus('Reading ZIP\u2026', 'loading');
   try {
     // Unzip
     const zipData = await file.arrayBuffer();
@@ -2390,7 +2187,6 @@ async function handleAudioUpload(file) {
     const wavBuf   = await wavFile.async('arraybuffer');
 
     setStatus('Decoding audio\u2026', false);
-    if (currentTask === 3) setASRStatus('Decoding audio\u2026', 'loading');
 
     const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
     const decoded = await tempCtx.decodeAudioData(wavBuf);
@@ -2410,7 +2206,6 @@ async function handleAudioUpload(file) {
     await processUploadedAudio();
   } catch (err) {
     setStatus('Upload error: ' + (err.message || String(err)), true);
-    if (currentTask === 3) setASRStatus('Upload error: ' + (err.message || String(err)), 'error');
   }
 }
 
@@ -2559,13 +2354,6 @@ async function processUploadedAudio() {
 
   // Send to Praat server for clinical-grade analysis
   sendToServer(savedTask);
-
-  // Auto-trigger Whisper transcription if model already loaded
-  if (savedTask === 3 && asrTranscriber) {
-    runWhisperTranscription();
-  } else if (savedTask === 3) {
-    setASRStatus('Select a Whisper model to transcribe', '');
-  }
 }
 
 // Build scale bars once DOM is ready
