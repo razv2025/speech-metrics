@@ -2073,7 +2073,7 @@ function renderLogTable(task) {
     // Build merged display list
     let display;
     if (filter === 'mine') {
-      display = localEntries;
+      display = localEntries.filter(e => !e.published_id);
     } else if (filter === 'published') {
       display = published;
     } else { // 'all'
