@@ -201,13 +201,15 @@ async function sendToServer(task) {
     form.append('file', blob, 'recording.wav');
     if (task === 3 && activePassageRef) form.append('reference_text', activePassageRef);
 
+    const t0   = Date.now();
     const resp = await fetch(`${SERVER_URL}/analyze/task${task}`, {
       method: 'POST',
       body: form,
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    applyServerResults(task, data);
+    const analysis_duration_s = (Date.now() - t0) / 1000;
+    applyServerResults(task, data, analysis_duration_s);
     setStatus('Analysis complete', false);
     document.getElementById('server-error-banner').style.display = 'none';
   } catch (err) {
@@ -262,9 +264,9 @@ function _applyServerMetricsToUI(task, d) {
   }
 }
 
-function applyServerResults(task, d) {
+function applyServerResults(task, d, analysis_duration_s) {
   _applyServerMetricsToUI(task, d);
-  _fillPendingLogEntry(task, d);
+  _fillPendingLogEntry(task, d, analysis_duration_s);
 }
 
 function setBtn(active) {
@@ -1723,8 +1725,9 @@ function setupDragDrop() {
 ════════════════════════════════════════════ */
 const LOG_METRICS = {
   1: [
-    { key: 'duration_s',     label: 'Duration\n(s)',    dec: 1 },
-    { key: 'f0_mean_hz',     label: 'F0 Mean\n(Hz)',    dec: 1 },
+    { key: 'duration_s',          label: 'Audio\n(s)',      dec: 1 },
+    { key: 'analysis_duration_s', label: 'Analysis\n(s)',   dec: 1 },
+    { key: 'f0_mean_hz',          label: 'F0 Mean\n(Hz)',   dec: 1 },
     { key: 'spl_mean_db',    label: 'SPL\n(dB)',        dec: 1 },
     { key: 'mpt_s',          label: 'MPT\n(s)',         dec: 1 },
     { key: 'jitter_pct',     label: 'Jitter\n(%)',      dec: 2 },
@@ -1734,14 +1737,16 @@ const LOG_METRICS = {
     { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
   ],
   2: [
-    { key: 'duration_s',     label: 'Duration\n(s)',    dec: 1 },
-    { key: 'f0_min_hz',      label: 'F0 Min\n(Hz)',     dec: 1 },
+    { key: 'duration_s',          label: 'Audio\n(s)',      dec: 1 },
+    { key: 'analysis_duration_s', label: 'Analysis\n(s)',   dec: 1 },
+    { key: 'f0_min_hz',           label: 'F0 Min\n(Hz)',    dec: 1 },
     { key: 'f0_max_hz',      label: 'F0 Max\n(Hz)',     dec: 1 },
     { key: 'f0_range_st',    label: 'F0 Range\n(ST)',   dec: 1 },
     { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
   ],
   3: [
-    { key: 'duration_s',              label: 'Duration\n(s)',    dec: 1 },
+    { key: 'duration_s',              label: 'Audio\n(s)',       dec: 1 },
+    { key: 'analysis_duration_s',     label: 'Analysis\n(s)',    dec: 1 },
     { key: 'f0_mean_hz',              label: 'F0 Mean\n(Hz)',    dec: 1 },
     { key: 'f0_std_hz',               label: 'F0 Std\n(Hz)',     dec: 1 },
     { key: 'cpp_db',                  label: 'CPP\n(dB)',        dec: 1 },
@@ -1831,7 +1836,7 @@ function addPendingLogEntry(task) {
 }
 
 // Step 2: fill in server metrics on the pending entry once the server responds
-function _fillPendingLogEntry(task, data) {
+function _fillPendingLogEntry(task, data, analysis_duration_s) {
   if (!logDB || !lastLogId[task]) return;
   const tx    = logDB.transaction('task' + task, 'readwrite');
   const store = tx.objectStore('task' + task);
@@ -1840,6 +1845,7 @@ function _fillPendingLogEntry(task, data) {
     const entry = ev.target.result;
     if (!entry) return;
     Object.assign(entry, _logFlatten(task, data), { version: data.version || null });
+    if (analysis_duration_s != null) entry.analysis_duration_s = analysis_duration_s;
     store.put(entry).onsuccess = () => renderLogTable(task);
   };
 }
@@ -2088,6 +2094,7 @@ async function replayLogEntry(task, id) {
     form.append('file', blob, 'recording.wav');
     const refText = entry.referenceText || (task === 3 ? activePassageRef : null);
     if (task === 3 && refText) form.append('reference_text', refText);
+    const t0 = Date.now();
     const serverPromise = fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form })
       .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
 
@@ -2095,6 +2102,7 @@ async function replayLogEntry(task, id) {
     await processUploadedAudio();
 
     const d = await serverPromise;
+    const analysis_duration_s = (Date.now() - t0) / 1000;
     _applyServerMetricsToUI(task, d);
     setStatus('Analysis complete', false);
 
@@ -2103,6 +2111,7 @@ async function replayLogEntry(task, id) {
       delete newMetrics.articulation_pct;
       delete newMetrics.consonant_precision_pct;
     }
+    newMetrics.analysis_duration_s = analysis_duration_s;
     await new Promise((resolve, reject) => {
       const tx    = logDB.transaction('task' + task, 'readwrite');
       const store = tx.objectStore('task' + task);
