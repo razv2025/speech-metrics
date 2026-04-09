@@ -560,9 +560,9 @@ canvas { display: block; width: 100%; height: 160px; }
 /* ── Analysis Log ──────────────────────────────────────────── */
 .log-section {
   margin-top: 20px;
-  margin-left:  calc(-50vw + 50%);
-  margin-right: calc(-50vw + 50%);
-  padding-left:  24px;
+  margin-left: -24px;
+  margin-right: -24px;
+  padding-left: 24px;
   padding-right: 24px;
 }
 .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
@@ -634,4 +634,58 @@ body.drag-over::after {
   min-height: 36px;
   white-space: pre-wrap;
   font-style: italic;
+}
+
+/* ── SIDEBAR ── */
+#sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: 188px;
+  height: 100vh;
+  background: #0d0f18;
+  border-right: 1px solid #1e2133;
+  padding: 20px 0;
+  overflow-y: auto;
+  z-index: 100;
+}
+.sidebar-brand {
+  display: block;
+  padding: 0 18px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #7c9ef8;
+  text-decoration: none;
+  border-bottom: 1px solid #1e2133;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.nav-item {
+  display: block;
+  padding: 7px 18px;
+  color: #888ea8;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-item:hover { color: #e0e4ef; background: rgba(124,158,248,0.06); }
+.nav-item.active { color: #c8cedf; }
+.nav-sub {
+  display: block;
+  padding: 6px 18px 6px 30px;
+  color: #555c75;
+  text-decoration: none;
+  font-size: 0.8rem;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  border-left: 2px solid transparent;
+}
+.nav-sub:hover { color: #c8cedf; background: rgba(124,158,248,0.05); }
+.nav-sub.active { color: #7c9ef8; border-left-color: #7c9ef8; background: rgba(124,158,248,0.07); }
+#menu-screen, #task-screen { margin-left: 188px; }
+@media (max-width: 680px) {
+  #sidebar { position: relative; width: 100%; height: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 10px 16px; border-right: none; border-bottom: 1px solid #1e2133; }
+  .sidebar-brand { border-bottom: none; margin-bottom: 0; padding: 0 12px 0 0; }
+  .nav-item, .nav-sub { padding: 5px 10px; font-size: 0.78rem; border-left: none; }
+  #menu-screen, #task-screen { margin-left: 0; }
 }
