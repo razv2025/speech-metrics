@@ -2654,13 +2654,12 @@ function renderLogTable(task) {
       const playBtn = e.audioData
         ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">▶</button>'
         : '';
-      html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + '</td>';
+      const dlBtn = e.audioData
+        ? '<button class="log-play-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="Download audio">↓</button>'
+        : '';
+      html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + dlBtn + '</td>';
       const fname = _escHtml(e.filename || '—');
-      const ftitle = _escHtml((e.filename || '') + ' (double-click to rename)');
-      const fcell = e.audioData
-        ? '<a href="#" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')">' + fname + '</a>'
-        : fname;
-      html += '<td class="log-filename" title="' + ftitle + '" ondblclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fcell + '</td>';
+      html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       metrics.forEach(m => {
         const v = e[m.key];
         html += '<td>' + (v != null ? fmt(parseFloat(v), m.dec) : '—') + '</td>';
@@ -2721,7 +2720,7 @@ function exportLogTSV(task) {
 }
 
 function downloadLogAudio(event, task, id) {
-  event.preventDefault();
+  event.stopPropagation();
   if (!logDB) return;
   const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).get(id);
   req.onsuccess = e => {
@@ -2740,17 +2739,11 @@ function downloadLogAudio(event, task, id) {
 
 function renameLogEntry(cell, task, id) {
   if (cell.querySelector('input')) return; // already editing
-  const anchor  = cell.querySelector('a');
-  const current = anchor ? anchor.textContent.trim() : cell.textContent.trim();
-  const hasAudio = !!anchor;
+  const current = cell.textContent.trim();
 
   function restoreCell(name) {
-    if (hasAudio) {
-      cell.innerHTML = '<a href="#" onclick="downloadLogAudio(event,' + task + ',' + id + ')">' + _escHtml(name) + '</a>';
-    } else {
-      cell.textContent = name;
-    }
-    cell.title = name + ' (double-click to rename)';
+    cell.textContent = name;
+    cell.title = name + ' (click to rename)';
   }
 
   const input = document.createElement('input');
