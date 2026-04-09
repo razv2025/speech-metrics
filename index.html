@@ -467,7 +467,13 @@ canvas { display: block; width: 100%; height: 160px; }
 .action-btn:disabled { opacity: 0.4; cursor: default; }
 .upload-input { display: none; }
 /* ── Analysis Log ──────────────────────────────────────────── */
-.log-section { margin-top: 20px; }
+.log-section {
+  margin-top: 20px;
+  margin-left:  calc(-50vw + 50%);
+  margin-right: calc(-50vw + 50%);
+  padding-left:  24px;
+  padding-right: 24px;
+}
 .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
 .log-title { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #888ea8; }
 .log-btns { display: flex; gap: 8px; }
