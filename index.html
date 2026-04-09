@@ -2634,8 +2634,9 @@ function renderLogTable(task) {
     const metrics = LOG_METRICS[task];
     let html = '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
     html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
-    html += '<th>File</th><th>Time</th>';
+    html += '<th>File</th>';
     metrics.forEach(m => { html += '<th>' + m.label.replace('\n','<br>') + '</th>'; });
+    html += '<th>Time</th>';
     html += '</tr></thead><tbody>';
     entries.slice().reverse().forEach(e => {
       html += '<tr>';
@@ -2649,11 +2650,11 @@ function renderLogTable(task) {
         ? '<a href="#" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')">' + fname + '</a>'
         : fname;
       html += '<td class="log-filename" title="' + ftitle + '" ondblclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fcell + '</td>';
-      html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
       metrics.forEach(m => {
         const v = e[m.key];
         html += '<td>' + (v != null ? fmt(parseFloat(v), m.dec) : '—') + '</td>';
       });
+      html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
       html += '</tr>';
     });
     html += '</tbody></table></div>';
