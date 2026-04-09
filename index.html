@@ -480,7 +480,10 @@ canvas { display: block; width: 100%; height: 160px; }
 .log-table td { padding: 6px 10px; border-bottom: 1px solid #1c1f2e; text-align: center; color: #c5cae9; white-space: nowrap; }
 .log-table tbody tr:last-child td { border-bottom: none; }
 .log-table tbody tr:hover td { background: #1e2233; }
-.log-table td.log-filename { text-align: left; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: #e0e4ef; }
+.log-table td.log-filename { text-align: left; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: #e0e4ef; cursor: pointer; }
+.log-filename a { color: #7c9ef8; text-decoration: none; }
+.log-filename a:hover { text-decoration: underline; }
+.log-rename-input { width: 100%; min-width: 80px; background: #252836; border: 1px solid #7c9ef8; border-radius: 4px; color: #e0e4ef; padding: 2px 5px; font-size: 0.76rem; outline: none; }
 .log-table td.log-ts { color: #666d88; font-size: 0.7rem; }
 .log-empty { color: #555975; font-size: 0.8rem; padding: 14px 0; text-align: center; margin: 0; }
 /* Drag-and-drop */
@@ -2568,7 +2571,11 @@ function _logFlatten(task, d) {
 
 function addLogEntry(task, data) {
   if (!logDB) return;
+  const audioData = (asrAudioBuf && asrAudioBuf.length)
+    ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
+    : null;
   const entry = { filename: currentFilename, timestamp: new Date().toISOString(), ..._logFlatten(task, data) };
+  if (audioData) entry.audioData = audioData;
   const tx  = logDB.transaction('task' + task, 'readwrite');
   const req = tx.objectStore('task' + task).add(entry);
   req.onsuccess = e => { lastLogId[task] = e.target.result; renderLogTable(task); };
@@ -2628,7 +2635,12 @@ function renderLogTable(task) {
     entries.slice().reverse().forEach(e => {
       html += '<tr>';
       html += '<td><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')"></td>';
-      html += '<td class="log-filename" title="' + _escHtml(e.filename||'') + '">' + _escHtml(e.filename||'—') + '</td>';
+      const fname = _escHtml(e.filename || '—');
+      const ftitle = _escHtml((e.filename || '') + ' (double-click to rename)');
+      const fcell = e.audioData
+        ? '<a href="#" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')">' + fname + '</a>'
+        : fname;
+      html += '<td class="log-filename" title="' + ftitle + '" ondblclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fcell + '</td>';
       html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
       metrics.forEach(m => {
         const v = e[m.key];
@@ -2684,6 +2696,73 @@ function exportLogTSV(task) {
     a.download  = names[task] + '_' + ts + '.tsv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+  });
+}
+
+function downloadLogAudio(event, task, id) {
+  event.preventDefault();
+  if (!logDB) return;
+  const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).get(id);
+  req.onsuccess = e => {
+    const entry = e.target.result;
+    if (!entry || !entry.audioData) return;
+    const blob = new Blob([entry.audioData], { type: 'audio/wav' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const name = entry.filename || 'recording';
+    a.download = name.endsWith('.wav') ? name : name + '.wav';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+}
+
+function renameLogEntry(cell, task, id) {
+  if (cell.querySelector('input')) return; // already editing
+  const anchor  = cell.querySelector('a');
+  const current = anchor ? anchor.textContent.trim() : cell.textContent.trim();
+  const hasAudio = !!anchor;
+
+  function restoreCell(name) {
+    if (hasAudio) {
+      cell.innerHTML = '<a href="#" onclick="downloadLogAudio(event,' + task + ',' + id + ')">' + _escHtml(name) + '</a>';
+    } else {
+      cell.textContent = name;
+    }
+    cell.title = name + ' (double-click to rename)';
+  }
+
+  const input = document.createElement('input');
+  input.className = 'log-rename-input';
+  input.value = current;
+  cell.innerHTML = '';
+  cell.appendChild(input);
+  input.focus();
+  input.select();
+
+  let committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    const newName = input.value.trim() || current;
+    if (!logDB) { restoreCell(current); return; }
+    const tx    = logDB.transaction('task' + task, 'readwrite');
+    const store = tx.objectStore('task' + task);
+    const req   = store.get(id);
+    req.onsuccess = ev => {
+      const entry = ev.target.result;
+      if (!entry) { restoreCell(current); return; }
+      entry.filename = newName;
+      store.put(entry).onsuccess = () => restoreCell(newName);
+    };
+    req.onerror = () => restoreCell(current);
+  }
+  function cancel() { committed = true; restoreCell(current); }
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
   });
 }
 
