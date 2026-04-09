@@ -94,11 +94,7 @@ def _get_s3():
 
 
 def _init_s3():
-    try:
-        _get_s3().head_bucket(Bucket=_S3_BUCKET)
-        print(f'S3 bucket ready: {_S3_BUCKET}/{_S3_PREFIX}')
-    except ClientError as exc:
-        print(f'S3 warning: {exc}')
+    print(f'S3 configured: {_S3_BUCKET}/{_S3_PREFIX}')
 
 
 _DB_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'published.db')
