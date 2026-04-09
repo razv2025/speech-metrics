@@ -384,7 +384,7 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
         model = get_whisper()
         tmp = sound_to_tmpfile(sound)
         try:
-            segments_gen, _info = model.transcribe(tmp, beam_size=5)
+            segments_gen, _info = model.transcribe(tmp, beam_size=1)
             segments = list(segments_gen)
         finally:
             os.unlink(tmp)
