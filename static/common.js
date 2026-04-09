@@ -1,5 +1,7 @@
 'use strict';
 
+const TASK_SLUG = { 1: 'sustained-phonation', 2: 'pitch-glides', 3: 'reading-passage' };
+
 /* ════════════════════════════════════════════
    SESSION STATE
 ════════════════════════════════════════════ */
@@ -71,7 +73,7 @@ const _pubFilter = { 1: 'all', 2: 'all', 3: 'all' };
 
 async function fetchPublished(task) {
   try {
-    const resp = await fetch(`${SERVER_URL}/published/task${task}`);
+    const resp = await fetch(`${SERVER_URL}/published/${TASK_SLUG[task]}`);
     if (!resp.ok) return;
     const rows = await resp.json();
     const myId = _getUserId();
@@ -135,7 +137,7 @@ async function publishEntry(task, localId) {
     form.append('file', new Blob([entry.audioData], { type: 'audio/wav' }), 'recording.wav');
     form.append('metadata', JSON.stringify(metadata));
 
-    const resp = await fetch(`${SERVER_URL}/publish/task${task}`, { method: 'POST', body: form });
+    const resp = await fetch(`${SERVER_URL}/publish/${TASK_SLUG[task]}`, { method: 'POST', body: form });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const result = await resp.json();
 
@@ -205,7 +207,7 @@ async function replayPublishedEntry(task, pubId) {
     form.append('file', new Blob([arrayBuf], { type: 'audio/wav' }), 'recording.wav');
     if (task === 3 && pub.reference_text) form.append('reference_text', pub.reference_text);
     const t0 = Date.now();
-    const serverPromise = fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form })
+    const serverPromise = fetch(`${SERVER_URL}/analyze/${TASK_SLUG[task]}`, { method: 'POST', body: form })
       .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
 
     _replayMode = true;
@@ -237,7 +239,7 @@ function _defaultFilename(task) {
     + String(now.getDate()).padStart(2, '0') + '_'
     + String(now.getHours()).padStart(2, '0') + '-'
     + String(now.getMinutes()).padStart(2, '0');
-  const names = { 1: 'phonation', 2: 'pitch-glides', 3: 'reading' };
+  const names = TASK_SLUG;
   const ext   = task === 3 ? 'zip' : 'wav';
   return `${names[task]}_${ts}.${ext}`;
 }
@@ -377,7 +379,7 @@ async function sendToServer(task) {
     if (task === 3 && activePassageRef) form.append('reference_text', activePassageRef);
 
     const t0   = Date.now();
-    const resp = await fetch(`${SERVER_URL}/analyze/task${task}`, {
+    const resp = await fetch(`${SERVER_URL}/analyze/${TASK_SLUG[task]}`, {
       method: 'POST',
       body: form,
     });
@@ -2216,12 +2218,11 @@ function exportLogTSV(task) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    const names = { 1: 'sustained-phonation', 2: 'pitch-glides', 3: 'reading-passage' };
     const now   = new Date();
     const ts    = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' +
                   String(now.getDate()).padStart(2,'0') + '_' +
                   String(now.getHours()).padStart(2,'0') + '-' + String(now.getMinutes()).padStart(2,'0');
-    a.download  = names[task] + '_' + ts + '.tsv';
+    a.download  = TASK_SLUG[task] + '_' + ts + '.tsv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   });
@@ -2329,7 +2330,7 @@ async function replayLogEntry(task, id) {
     const refText = entry.referenceText || (task === 3 ? activePassageRef : null);
     if (task === 3 && refText) form.append('reference_text', refText);
     const t0 = Date.now();
-    const serverPromise = fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form })
+    const serverPromise = fetch(`${SERVER_URL}/analyze/${TASK_SLUG[task]}`, { method: 'POST', body: form })
       .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
 
     _replayMode = true;

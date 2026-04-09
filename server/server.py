@@ -2,8 +2,9 @@
 Speech metrics server — clinical-grade analysis via Praat (parselmouth) + Whisper.
 
 Endpoints:
-  POST /analyze/task1   — Sustained Phonation
-  POST /analyze/task3   — Reading Passage
+  POST /analyze/sustained-phonation   — Sustained Phonation
+  POST /analyze/pitch-glides          — Pitch Glides
+  POST /analyze/reading-passage       — Reading Passage
   GET  /health
 """
 
@@ -552,11 +553,17 @@ def compute_articulation(transcript: str, reference: str) -> dict:
 # ---------------------------------------------------------------------------
 # Publish endpoints
 # ---------------------------------------------------------------------------
-@app.post('/publish/task{task_n}')
-async def publish_entry(task_n: int, file: UploadFile = File(...), metadata: str = Form(...)):
+_TASK_SLUGS = {'sustained-phonation': 1, 'pitch-glides': 2, 'reading-passage': 3}
+
+
+@app.post('/publish/{task_slug}')
+async def publish_entry(task_slug: str, file: UploadFile = File(...), metadata: str = Form(...)):
+    task_n = _TASK_SLUGS.get(task_slug)
+    if task_n is None:
+        raise HTTPException(status_code=404, detail='Unknown task')
     data    = json.loads(metadata)
     audio   = await file.read()
-    s3_key  = f'{_S3_PREFIX}task{task_n}/{_uuid_mod.uuid4()}.wav'
+    s3_key  = f'{_S3_PREFIX}{task_slug}/{_uuid_mod.uuid4()}.wav'
     _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
     now = datetime.now(timezone.utc).isoformat()
     with _db() as conn:
@@ -573,8 +580,11 @@ async def publish_entry(task_n: int, file: UploadFile = File(...), metadata: str
     return {'id': entry_id, 'published_at': now}
 
 
-@app.get('/published/task{task_n}')
-def get_published(task_n: int):
+@app.get('/published/{task_slug}')
+def get_published(task_slug: str):
+    task_n = _TASK_SLUGS.get(task_slug)
+    if task_n is None:
+        raise HTTPException(status_code=404, detail='Unknown task')
     with _db() as conn:
         rows = conn.execute(
             'SELECT id,task,user_id,filename,published_at,metrics,audio_sr,duration_s,version '
@@ -648,23 +658,23 @@ def serve_task3():
     return _html("task3.html")
 
 
-@app.post("/analyze/task1")
-async def endpoint_task1(file: UploadFile = File(...)):
+@app.post("/analyze/sustained-phonation")
+async def endpoint_sustained_phonation(file: UploadFile = File(...)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
     return {**analyze_task1(sound), "version": _GIT_VERSION}
 
 
-@app.post("/analyze/task2")
-async def endpoint_task2(file: UploadFile = File(...)):
+@app.post("/analyze/pitch-glides")
+async def endpoint_pitch_glides(file: UploadFile = File(...)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
     return {**analyze_task2(sound), "version": _GIT_VERSION}
 
 
-@app.post("/analyze/task3")
-async def endpoint_task3(file: UploadFile = File(...),
-                         reference_text: Optional[str] = Form(None)):
+@app.post("/analyze/reading-passage")
+async def endpoint_reading_passage(file: UploadFile = File(...),
+                                   reference_text: Optional[str] = Form(None)):
     wav_bytes = await file.read()
     sound = wav_bytes_to_sound(wav_bytes)
     result = analyze_task3(sound)
