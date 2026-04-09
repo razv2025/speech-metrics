@@ -483,17 +483,17 @@ def serve_menu():
     return _html("index.html")
 
 
-@app.get("/task1")
+@app.get("/sustained-phonation")
 def serve_task1():
     return _html("task1.html")
 
 
-@app.get("/task2")
+@app.get("/pitch-glides")
 def serve_task2():
     return _html("task2.html")
 
 
-@app.get("/task3")
+@app.get("/reading-passage")
 def serve_task3():
     return _html("task3.html")
 
