@@ -1208,7 +1208,8 @@ function startPassageEdit() {
   const box = document.getElementById('passage-box');
   if (box) box.classList.remove('mode-word');
 
-  document.getElementById('passage-edit-btn').style.display = 'none';
+  const _editBtn = document.getElementById('passage-edit-btn');
+  if (_editBtn) _editBtn.style.display = 'none';
   document.getElementById('passage-done-btn').style.display = '';
 }
 
@@ -1228,7 +1229,8 @@ function commitPassageEdit() {
   const box = document.getElementById('passage-box');
   if (box) box.classList.toggle('mode-word', passageType === 'word');
 
-  document.getElementById('passage-edit-btn').style.display = '';
+  const _editBtn2 = document.getElementById('passage-edit-btn');
+  if (_editBtn2) _editBtn2.style.display = '';
   document.getElementById('passage-done-btn').style.display = 'none';
 }
 
