@@ -455,6 +455,25 @@ canvas { display: block; width: 100%; height: 160px; }
 .action-btn:hover  { border-color: #7c9ef8; background: #20243a; }
 .action-btn:disabled { opacity: 0.4; cursor: default; }
 .upload-input { display: none; }
+/* ── Analysis Log ──────────────────────────────────────────── */
+.log-section { margin-top: 20px; }
+.log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+.log-title { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #888ea8; }
+.log-btns { display: flex; gap: 8px; }
+.log-action-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid #252836; background: #1a1d27; color: #e0e4ef; font-size: 0.78rem; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.log-action-btn:hover { border-color: #7c9ef8; background: #20243a; }
+.log-action-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.log-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #252836; }
+.log-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+.log-table th { background: #13151f; color: #888ea8; padding: 7px 10px; text-align: center; white-space: pre; border-bottom: 1px solid #252836; font-weight: 600; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.log-table td { padding: 6px 10px; border-bottom: 1px solid #1c1f2e; text-align: center; color: #c5cae9; white-space: nowrap; }
+.log-table tbody tr:last-child td { border-bottom: none; }
+.log-table tbody tr:hover td { background: #1e2233; }
+.log-table td.log-filename { text-align: left; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: #e0e4ef; }
+.log-table td.log-ts { color: #666d88; font-size: 0.7rem; }
+.log-empty { color: #555975; font-size: 0.8rem; padding: 14px 0; text-align: center; margin: 0; }
+/* Drag-and-drop */
+.drag-over { outline: 2px dashed #7c9ef8 !important; outline-offset: -3px; border-radius: 12px; }
 .audio-actions-sep {
   font-size: 0.78rem;
   color: #555c75;
@@ -609,9 +628,19 @@ canvas { display: block; width: 100%; height: 160px; }
       <span class="audio-actions-sep">or</span>
       <label class="action-btn" for="upload-input-1">
         &#8679; Upload Audio
-        <input class="upload-input" id="upload-input-1" type="file"
-               accept="audio/*" onchange="handleAudioUploadRaw(this.files[0])">
+        <input class="upload-input" id="upload-input-1" type="file" multiple
+               accept="audio/*" onchange="enqueueFiles(this.files,handleAudioUploadRaw)">
       </label>
+    </div>
+    <div class="log-section">
+      <div class="log-header">
+        <span class="log-title">Recent Analyses</span>
+        <div class="log-btns">
+          <button class="log-action-btn" id="log-delete-1" onclick="deleteSelected(1)" disabled>🗑 Delete Selected</button>
+          <button class="log-action-btn" id="log-export-1" onclick="exportLogTSV(1)" disabled>↓ Export TSV</button>
+        </div>
+      </div>
+      <div id="log-table-1"></div>
     </div>
   </div>
 
@@ -653,9 +682,19 @@ canvas { display: block; width: 100%; height: 160px; }
       <span class="audio-actions-sep">or</span>
       <label class="action-btn" for="upload-input-2">
         &#8679; Upload Audio
-        <input class="upload-input" id="upload-input-2" type="file"
-               accept="audio/*" onchange="handleAudioUploadRaw(this.files[0])">
+        <input class="upload-input" id="upload-input-2" type="file" multiple
+               accept="audio/*" onchange="enqueueFiles(this.files,handleAudioUploadRaw)">
       </label>
+    </div>
+    <div class="log-section">
+      <div class="log-header">
+        <span class="log-title">Recent Analyses</span>
+        <div class="log-btns">
+          <button class="log-action-btn" id="log-delete-2" onclick="deleteSelected(2)" disabled>🗑 Delete Selected</button>
+          <button class="log-action-btn" id="log-export-2" onclick="exportLogTSV(2)" disabled>↓ Export TSV</button>
+        </div>
+      </div>
+      <div id="log-table-2"></div>
     </div>
   </div>
 
@@ -766,14 +805,24 @@ canvas { display: block; width: 100%; height: 160px; }
       <span class="audio-actions-sep">or</span>
       <label class="action-btn" for="upload-input">
         &#8679; Upload Session ZIP
-        <input class="upload-input" id="upload-input" type="file"
-               accept=".zip,application/zip" onchange="handleAudioUpload(this.files[0])">
+        <input class="upload-input" id="upload-input" type="file" multiple
+               accept=".zip,application/zip" onchange="enqueueFiles(this.files,handleAudioUpload)">
       </label>
     </div>
     <!-- Transcript preview -->
     <div class="transcript-box" id="transcript-box" style="display:none">
       <div class="transcript-label">Transcript</div>
       <div class="transcript-text" id="transcript-text"></div>
+    </div>
+    <div class="log-section">
+      <div class="log-header">
+        <span class="log-title">Recent Analyses</span>
+        <div class="log-btns">
+          <button class="log-action-btn" id="log-delete-3" onclick="deleteSelected(3)" disabled>🗑 Delete Selected</button>
+          <button class="log-action-btn" id="log-export-3" onclick="exportLogTSV(3)" disabled>↓ Export TSV</button>
+        </div>
+      </div>
+      <div id="log-table-3"></div>
     </div>
   </div>
 </div>
@@ -824,6 +873,7 @@ let lastHnrCorr   = null; // last autocorrelation peak value
 // Audio buffer state
 let asrAudioBuf      = [];          // raw PCM collected during recording (at asrSampleRate)
 let asrSampleRate    = 44100;       // sample rate of asrAudioBuf
+let currentFilename  = 'New recording'; // filename for log entry
 
 const CAP             = 500;
 const CONTOUR_CAP     = 300;
@@ -886,6 +936,7 @@ function resetSession() {
   minF0 = Infinity; maxF0 = -Infinity;
   sessionStart = null; lastHnrCorr = null;
   asrAudioBuf = [];
+  currentFilename = 'New recording';
   [1, 2, 3].forEach(n => {
     const id  = n === 3 ? 'download-btn' : 'download-btn-' + n;
     const btn = document.getElementById(id);
@@ -1063,6 +1114,7 @@ function applyServerResults(task, d) {
       showArticResult(d.articulation_pct ?? null, d.consonant_precision_pct ?? null, d.transcript ?? '');
     }
   }
+  addLogEntry(task, d);
 }
 
 function setBtn(active) {
@@ -2133,9 +2185,12 @@ function downloadAudioWAV(taskN) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'task' + taskN + '_recording.wav';
+  const fname = 'task' + taskN + '_recording.wav';
+  a.download  = fname;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  currentFilename = fname;
+  updateLastLogFilename(taskN, fname);
 }
 
 async function downloadRecording() {
@@ -2154,9 +2209,12 @@ async function downloadRecording() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'reading_session.zip';
+  const fname = 'reading_session.zip';
+  a.download  = fname;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  currentFilename = fname;
+  updateLastLogFilename(3, fname);
 }
 
 /* ════════════════════════════════════════════
@@ -2164,6 +2222,7 @@ async function downloadRecording() {
 ════════════════════════════════════════════ */
 async function handleAudioUpload(file) {
   if (!file) return;
+  currentFilename = file.name;
   if (passageEditing) commitPassageEdit(); // exit edit mode so passage-text span exists
   setStatus('Reading ' + file.name + '\u2026', false);
   try {
@@ -2211,6 +2270,7 @@ async function handleAudioUpload(file) {
 
 async function handleAudioUploadRaw(file) {
   if (!file) return;
+  currentFilename = file.name;
   setStatus('Decoding ' + file.name + '\u2026', false);
   try {
     const arrayBuf = await file.arrayBuffer();
@@ -2355,6 +2415,251 @@ async function processUploadedAudio() {
   // Send to Praat server for clinical-grade analysis
   sendToServer(savedTask);
 }
+
+/* ════════════════════════════════════════════
+   MULTI-FILE UPLOAD QUEUE
+════════════════════════════════════════════ */
+let _uploadQueue = [];
+let _uploadBusy  = false;
+
+function enqueueFiles(fileList, handler) {
+  for (const f of fileList) _uploadQueue.push({ file: f, handler });
+  _drainUploadQueue();
+}
+
+async function _drainUploadQueue() {
+  if (_uploadBusy || _uploadQueue.length === 0) return;
+  _uploadBusy = true;
+  while (_uploadQueue.length > 0) {
+    const { file, handler } = _uploadQueue.shift();
+    await handler(file);
+  }
+  _uploadBusy = false;
+}
+
+/* ════════════════════════════════════════════
+   DRAG-AND-DROP
+════════════════════════════════════════════ */
+function setupDragDrop() {
+  [1, 2, 3].forEach(task => {
+    const el = document.getElementById('t' + task + '-content');
+    if (!el) return;
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over'); });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const files = [...e.dataTransfer.files];
+      if (task === 3) {
+        const zips = files.filter(f => f.name.toLowerCase().endsWith('.zip') || f.type === 'application/zip');
+        if (zips.length) enqueueFiles(zips, handleAudioUpload);
+      } else {
+        const audio = files.filter(f => f.type.startsWith('audio/'));
+        if (audio.length) enqueueFiles(audio, handleAudioUploadRaw);
+      }
+    });
+  });
+}
+
+/* ════════════════════════════════════════════
+   ANALYSIS LOG — IndexedDB
+════════════════════════════════════════════ */
+const LOG_METRICS = {
+  1: [
+    { key: 'f0_mean_hz',     label: 'F0 Mean\n(Hz)',    dec: 1 },
+    { key: 'spl_mean_db',    label: 'SPL\n(dB)',        dec: 1 },
+    { key: 'mpt_s',          label: 'MPT\n(s)',         dec: 1 },
+    { key: 'jitter_pct',     label: 'Jitter\n(%)',      dec: 2 },
+    { key: 'shimmer_pct',    label: 'Shimmer\n(%)',     dec: 2 },
+    { key: 'cpp_db',         label: 'CPP\n(dB)',        dec: 1 },
+    { key: 'hnr_db',         label: 'HNR\n(dB)',        dec: 1 },
+    { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
+  ],
+  2: [
+    { key: 'f0_min_hz',      label: 'F0 Min\n(Hz)',     dec: 1 },
+    { key: 'f0_max_hz',      label: 'F0 Max\n(Hz)',     dec: 1 },
+    { key: 'f0_range_st',    label: 'F0 Range\n(ST)',   dec: 1 },
+    { key: 'noise_floor_db', label: 'Noise\n(dB)',      dec: 1 },
+  ],
+  3: [
+    { key: 'f0_mean_hz',              label: 'F0 Mean\n(Hz)',    dec: 1 },
+    { key: 'f0_std_hz',               label: 'F0 Std\n(Hz)',     dec: 1 },
+    { key: 'cpp_db',                  label: 'CPP\n(dB)',        dec: 1 },
+    { key: 'spl_mean_db',             label: 'SPL\n(dB)',        dec: 1 },
+    { key: 'spl_variability_db',      label: 'SPL Var\n(dB)',    dec: 1 },
+    { key: 'speech_rate_wpm',         label: 'Rate\n(WPM)',      dec: 0 },
+    { key: 'prosody_st',              label: 'Prosody\n(ST)',    dec: 1 },
+    { key: 'noise_floor_db',          label: 'Noise\n(dB)',      dec: 1 },
+    { key: 'avg_pause_s',             label: 'Pause\n(s)',       dec: 2 },
+    { key: 'vsa_khz2',                label: 'VSA\n(kHz²)',      dec: 0 },
+    { key: 'articulation_pct',        label: 'Artic.\n(%)',      dec: 1 },
+    { key: 'consonant_precision_pct', label: 'Conson.\n(%)',     dec: 1 },
+  ],
+};
+
+let logDB = null;
+let lastLogId = { 1: null, 2: null, 3: null };
+
+function initLogDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('speech-metrics-log', 1);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      [1, 2, 3].forEach(t => {
+        if (!d.objectStoreNames.contains('task' + t))
+          d.createObjectStore('task' + t, { keyPath: 'id', autoIncrement: true });
+      });
+    };
+    req.onsuccess = e => { logDB = e.target.result; resolve(); };
+    req.onerror   = e => reject(e);
+  });
+}
+
+function _logFlatten(task, d) {
+  if (task === 1) return {
+    f0_mean_hz: d.f0_mean_hz, spl_mean_db: d.spl_mean_db, mpt_s: d.mpt_s,
+    jitter_pct: d.jitter_pct, shimmer_pct: d.shimmer_pct, cpp_db: d.cpp_db,
+    hnr_db: d.hnr_db, noise_floor_db: d.noise_floor_db,
+  };
+  if (task === 2) return {
+    f0_min_hz: d.f0_min_hz, f0_max_hz: d.f0_max_hz,
+    f0_range_st: d.f0_range_st, noise_floor_db: d.noise_floor_db,
+  };
+  return {
+    f0_mean_hz: d.f0_mean_hz, f0_std_hz: d.f0_std_hz, cpp_db: d.cpp_db,
+    spl_mean_db: d.spl_mean_db, spl_variability_db: d.spl_variability_db,
+    speech_rate_wpm: d.speech_rate_wpm, prosody_st: d.prosody_st,
+    noise_floor_db: d.noise_floor_db, avg_pause_s: d.avg_pause_s,
+    vsa_khz2: d.vsa_hz2 != null ? d.vsa_hz2 / 1000 : null,
+    articulation_pct: d.articulation_pct,
+    consonant_precision_pct: d.consonant_precision_pct,
+  };
+}
+
+function addLogEntry(task, data) {
+  if (!logDB) return;
+  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), ..._logFlatten(task, data) };
+  const tx  = logDB.transaction('task' + task, 'readwrite');
+  const req = tx.objectStore('task' + task).add(entry);
+  req.onsuccess = e => { lastLogId[task] = e.target.result; renderLogTable(task); };
+}
+
+function updateLastLogFilename(task, filename) {
+  if (!logDB || !lastLogId[task]) return;
+  const tx    = logDB.transaction('task' + task, 'readwrite');
+  const store = tx.objectStore('task' + task);
+  const req   = store.get(lastLogId[task]);
+  req.onsuccess = e => {
+    const entry = e.target.result;
+    if (!entry) return;
+    entry.filename = filename;
+    store.put(entry).onsuccess = () => renderLogTable(task);
+  };
+}
+
+function _getAllLogEntries(task) {
+  return new Promise(resolve => {
+    if (!logDB) return resolve([]);
+    const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).getAll();
+    req.onsuccess = e => resolve(e.target.result || []);
+    req.onerror   = () => resolve([]);
+  });
+}
+
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _fmtTs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderLogTable(task) {
+  _getAllLogEntries(task).then(entries => {
+    const wrap   = document.getElementById('log-table-' + task);
+    const delBtn = document.getElementById('log-delete-' + task);
+    const expBtn = document.getElementById('log-export-' + task);
+    if (!wrap) return;
+    if (entries.length === 0) {
+      wrap.innerHTML = '<p class="log-empty">No analyses recorded yet.</p>';
+      if (delBtn) delBtn.disabled = true;
+      if (expBtn) expBtn.disabled = true;
+      return;
+    }
+    if (expBtn) expBtn.disabled = false;
+    const metrics = LOG_METRICS[task];
+    let html = '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
+    html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
+    html += '<th>File</th><th>Time</th>';
+    metrics.forEach(m => { html += '<th>' + m.label.replace('\n','<br>') + '</th>'; });
+    html += '</tr></thead><tbody>';
+    entries.slice().reverse().forEach(e => {
+      html += '<tr>';
+      html += '<td><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')"></td>';
+      html += '<td class="log-filename" title="' + _escHtml(e.filename||'') + '">' + _escHtml(e.filename||'—') + '</td>';
+      html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
+      metrics.forEach(m => {
+        const v = e[m.key];
+        html += '<td>' + (v != null ? fmt(parseFloat(v), m.dec) : '—') + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+    if (delBtn) delBtn.disabled = true;
+  });
+}
+
+function logChkChange(task) {
+  const any = [...document.querySelectorAll('.log-chk[data-task="' + task + '"]')].some(c => c.checked);
+  const btn = document.getElementById('log-delete-' + task);
+  if (btn) btn.disabled = !any;
+}
+
+function logToggleAll(masterChk, task) {
+  document.querySelectorAll('.log-chk[data-task="' + task + '"]').forEach(c => c.checked = masterChk.checked);
+  logChkChange(task);
+}
+
+function deleteSelected(task) {
+  if (!logDB) return;
+  const ids = [...document.querySelectorAll('.log-chk[data-task="' + task + '"]:checked')].map(c => +c.dataset.id);
+  if (!ids.length) return;
+  const tx    = logDB.transaction('task' + task, 'readwrite');
+  const store = tx.objectStore('task' + task);
+  ids.forEach(id => store.delete(id));
+  tx.oncomplete = () => renderLogTable(task);
+}
+
+function exportLogTSV(task) {
+  _getAllLogEntries(task).then(entries => {
+    if (!entries.length) return;
+    const metrics = LOG_METRICS[task];
+    const headers = ['filename', 'timestamp', ...metrics.map(m => m.key)];
+    const lines   = [headers.join('\t')];
+    entries.forEach(e => {
+      lines.push(headers.map(h => { const v = e[h]; return v != null ? String(v) : ''; }).join('\t'));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/tab-separated-values' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const names = { 1: 'sustained-phonation', 2: 'pitch-glides', 3: 'reading-passage' };
+    const now   = new Date();
+    const ts    = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' +
+                  String(now.getDate()).padStart(2,'0') + '_' +
+                  String(now.getHours()).padStart(2,'0') + '-' + String(now.getMinutes()).padStart(2,'0');
+    a.download  = names[task] + '_' + ts + '.tsv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  });
+}
+
+// Initialise on load
+initLogDB().then(() => { [1, 2, 3].forEach(t => renderLogTable(t)); });
+setupDragDrop();
 
 // Build scale bars once DOM is ready
 initScales();
