@@ -484,6 +484,10 @@ canvas { display: block; width: 100%; height: 160px; }
 .log-filename a { color: #7c9ef8; text-decoration: none; }
 .log-filename a:hover { text-decoration: underline; }
 .log-rename-input { width: 100%; min-width: 80px; background: #252836; border: 1px solid #7c9ef8; border-radius: 4px; color: #e0e4ef; padding: 2px 5px; font-size: 0.76rem; outline: none; }
+.log-ctrl-cell { white-space: nowrap; }
+.log-play-btn { background: none; border: none; color: #7c9ef8; cursor: pointer; font-size: 0.8rem; padding: 0 0 0 5px; line-height: 1; opacity: 0.65; transition: opacity 0.15s, color 0.15s; vertical-align: middle; }
+.log-play-btn:hover:not(:disabled) { opacity: 1; color: #a8c0ff; }
+.log-play-btn:disabled { opacity: 0.25; cursor: default; }
 .log-table td.log-ts { color: #666d88; font-size: 0.7rem; }
 .log-empty { color: #555975; font-size: 0.8rem; padding: 14px 0; text-align: center; margin: 0; }
 /* Drag-and-drop */
@@ -2575,7 +2579,8 @@ function addLogEntry(task, data) {
     ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
     : null;
   const entry = { filename: currentFilename, timestamp: new Date().toISOString(), ..._logFlatten(task, data) };
-  if (audioData) entry.audioData = audioData;
+  if (audioData) { entry.audioData = audioData; entry.audioSR = asrSampleRate; }
+  if (task === 3 && activePassageRef) entry.referenceText = activePassageRef;
   const tx  = logDB.transaction('task' + task, 'readwrite');
   const req = tx.objectStore('task' + task).add(entry);
   req.onsuccess = e => { lastLogId[task] = e.target.result; renderLogTable(task); };
@@ -2634,7 +2639,10 @@ function renderLogTable(task) {
     html += '</tr></thead><tbody>';
     entries.slice().reverse().forEach(e => {
       html += '<tr>';
-      html += '<td><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')"></td>';
+      const playBtn = e.audioData
+        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">▶</button>'
+        : '';
+      html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + '</td>';
       const fname = _escHtml(e.filename || '—');
       const ftitle = _escHtml((e.filename || '') + ' (double-click to rename)');
       const fcell = e.audioData
@@ -2764,6 +2772,60 @@ function renameLogEntry(cell, task, id) {
     if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') { e.preventDefault(); cancel(); }
   });
+}
+
+async function replayLogEntry(task, id) {
+  if (!logDB) return;
+
+  // Disable the play button immediately
+  const btn = document.querySelector('.log-play-btn[data-id="' + id + '"][data-task="' + task + '"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳'; }
+
+  try {
+    // Load entry from DB
+    const entry = await new Promise((resolve, reject) => {
+      const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).get(id);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = () => reject(new Error('DB read failed'));
+    });
+    if (!entry || !entry.audioData) throw new Error('No audio stored for this entry');
+
+    // Send stored WAV to server
+    const blob = new Blob([entry.audioData], { type: 'audio/wav' });
+    const form = new FormData();
+    form.append('file', blob, 'recording.wav');
+    const refText = entry.referenceText || (task === 3 ? activePassageRef : null);
+    if (task === 3 && refText) form.append('reference_text', refText);
+
+    const resp = await fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form });
+    if (!resp.ok) throw new Error(`Server returned HTTP ${resp.status}`);
+    const d = await resp.json();
+
+    // Merge new metrics into existing entry, preserving filename/timestamp/audio
+    const newMetrics = _logFlatten(task, d);
+    if (task === 3 && !refText) {
+      delete newMetrics.articulation_pct;       // can't compute without reference
+      delete newMetrics.consonant_precision_pct;
+    }
+
+    await new Promise((resolve, reject) => {
+      const tx    = logDB.transaction('task' + task, 'readwrite');
+      const store = tx.objectStore('task' + task);
+      const req   = store.get(id);
+      req.onsuccess = ev => {
+        const existing = ev.target.result;
+        if (!existing) { reject(new Error('Entry gone')); return; }
+        Object.assign(existing, newMetrics);
+        store.put(existing).onsuccess = resolve;
+      };
+      req.onerror = reject;
+    });
+
+    renderLogTable(task); // re-render to show updated metrics
+  } catch (err) {
+    console.error('Re-analysis failed:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '▶'; }
+  }
 }
 
 // Initialise on load
