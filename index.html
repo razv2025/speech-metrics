@@ -2656,8 +2656,10 @@ function renderLogTable(task) {
       const playBtn = e.audioData
         ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyse">▶</button>'
         : '';
+      const dlLabel = task === 3 ? '↓ zip' : '↓ wav';
+      const dlTitle = task === 3 ? 'Download ZIP (audio + passage)' : 'Download WAV';
       const dlBtn = e.audioData
-        ? '<button class="log-dl-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="Download ZIP">↓ zip</button>'
+        ? '<button class="log-dl-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="' + dlTitle + '">' + dlLabel + '</button>'
         : '';
       html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + dlBtn + '</td>';
       const fname = _escHtml(e.filename || '—');
@@ -2728,16 +2730,21 @@ function downloadLogAudio(event, task, id) {
   req.onsuccess = async e => {
     const entry = e.target.result;
     if (!entry || !entry.audioData) return;
-    const zip  = new JSZip();
-    zip.file('recording.wav', entry.audioData);
-    if (entry.referenceText) zip.file('passage.txt', entry.referenceText);
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
     const base = (entry.filename || 'recording').replace(/\.(wav|zip)$/i, '');
-    a.download = base + '.zip';
-    a.click();
+    let blob, filename;
+    if (task === 3) {
+      const zip = new JSZip();
+      zip.file('recording.wav', entry.audioData);
+      if (entry.referenceText) zip.file('passage.txt', entry.referenceText);
+      blob     = await zip.generateAsync({ type: 'blob' });
+      filename = base + '.zip';
+    } else {
+      blob     = new Blob([entry.audioData], { type: 'audio/wav' });
+      filename = base + '.wav';
+    }
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 }
