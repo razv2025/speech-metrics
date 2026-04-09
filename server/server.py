@@ -11,17 +11,25 @@ import os
 import ssl
 import tempfile
 import traceback
+import json
+import sqlite3
+import uuid as _uuid_mod
+import urllib.request
+from datetime import datetime, timezone
 
 import numpy as np
 
 # Allow Whisper model download through corporate proxies with self-signed certs.
 # This only affects the one-time model download; no external data is sent.
 ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
+import boto3
+from botocore.exceptions import ClientError
 from scipy.fft import fft, ifft
 from scipy.spatial import ConvexHull
 
@@ -51,6 +59,105 @@ app.add_middleware(
 
 _STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+# ---------------------------------------------------------------------------
+# Publish infrastructure — S3 + SQLite
+# ---------------------------------------------------------------------------
+def _detect_aws_region() -> str:
+    try:
+        token = urllib.request.urlopen(
+            urllib.request.Request(
+                'http://169.254.169.254/latest/api/token', method='PUT',
+                headers={'X-aws-ec2-metadata-token-ttl-seconds': '10'},
+            ), timeout=1,
+        ).read().decode()
+        req = urllib.request.Request(
+            'http://169.254.169.254/latest/meta-data/placement/region',
+            headers={'X-aws-ec2-metadata-token': token},
+        )
+        return urllib.request.urlopen(req, timeout=1).read().decode()
+    except Exception:
+        return boto3.session.Session().region_name or 'us-east-1'
+
+
+_AWS_REGION = _detect_aws_region()
+_S3_BUCKET: str = ''
+_s3_client = None
+
+
+def _get_s3():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client('s3', region_name=_AWS_REGION)
+    return _s3_client
+
+
+def _init_s3():
+    global _S3_BUCKET
+    s3 = _get_s3()
+    try:
+        acct = boto3.client('sts', region_name=_AWS_REGION).get_caller_identity()['Account']
+        _S3_BUCKET = f'speech-metrics-{acct}'
+    except Exception:
+        import socket
+        _S3_BUCKET = f'speech-metrics-{abs(hash(socket.gethostname())) % 10 ** 8}'
+    try:
+        s3.head_bucket(Bucket=_S3_BUCKET)
+        print(f'S3 bucket ready: {_S3_BUCKET}')
+    except ClientError as exc:
+        code = exc.response['Error']['Code']
+        if code in ('404', 'NoSuchBucket'):
+            kw = {} if _AWS_REGION == 'us-east-1' else {
+                'CreateBucketConfiguration': {'LocationConstraint': _AWS_REGION},
+            }
+            s3.create_bucket(Bucket=_S3_BUCKET, **kw)
+            s3.put_public_access_block(
+                Bucket=_S3_BUCKET,
+                PublicAccessBlockConfiguration={
+                    'BlockPublicAcls': True, 'IgnorePublicAcls': True,
+                    'BlockPublicPolicy': True, 'RestrictPublicBuckets': True,
+                },
+            )
+            print(f'S3 bucket created: {_S3_BUCKET} ({_AWS_REGION})')
+        else:
+            print(f'S3 warning: {exc}')
+
+
+_DB_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'published.db')
+
+
+def _db():
+    conn = sqlite3.connect(_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db():
+    with _db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS published (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                task           INTEGER NOT NULL,
+                user_id        TEXT,
+                filename       TEXT,
+                published_at   TEXT NOT NULL,
+                s3_key         TEXT NOT NULL,
+                metrics        TEXT,
+                reference_text TEXT,
+                audio_sr       INTEGER,
+                duration_s     REAL,
+                version        TEXT
+            )
+        ''')
+        conn.commit()
+
+
+# Initialise on import (runs whether started via __main__ or uvicorn)
+try:
+    _init_db()
+    _init_s3()
+except Exception as _pub_init_err:
+    print(f'WARNING: publish infrastructure unavailable: {_pub_init_err}')
 
 # Whisper loaded lazily on first Task-3 request to avoid delaying startup
 _whisper_model = None
@@ -468,6 +575,75 @@ def compute_articulation(transcript: str, reference: str) -> dict:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Publish endpoints
+# ---------------------------------------------------------------------------
+@app.post('/publish/task{task_n}')
+async def publish_entry(task_n: int, file: UploadFile = File(...), metadata: str = Form(...)):
+    data    = json.loads(metadata)
+    audio   = await file.read()
+    s3_key  = f'task{task_n}/{_uuid_mod.uuid4()}.wav'
+    _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
+    now = datetime.now(timezone.utc).isoformat()
+    with _db() as conn:
+        cur = conn.execute(
+            'INSERT INTO published '
+            '(task,user_id,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?)',
+            (task_n, data.get('user_id'), data.get('filename'), now, s3_key,
+             json.dumps(data.get('metrics', {})), data.get('reference_text'),
+             data.get('audio_sr'), data.get('duration_s'), data.get('version')),
+        )
+        conn.commit()
+        entry_id = cur.lastrowid
+    return {'id': entry_id, 'published_at': now}
+
+
+@app.get('/published/task{task_n}')
+def get_published(task_n: int):
+    with _db() as conn:
+        rows = conn.execute(
+            'SELECT id,task,user_id,filename,published_at,metrics,audio_sr,duration_s,version '
+            'FROM published WHERE task=? ORDER BY published_at DESC', (task_n,),
+        ).fetchall()
+    result = []
+    for r in rows:
+        e = dict(r)
+        e['metrics'] = json.loads(e['metrics'] or '{}')
+        result.append(e)
+    return result
+
+
+@app.delete('/published/{entry_id}')
+def delete_published(entry_id: int):
+    with _db() as conn:
+        row = conn.execute('SELECT s3_key FROM published WHERE id=?', (entry_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='Not found')
+        try:
+            _get_s3().delete_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
+        except Exception as exc:
+            print(f'S3 delete warning: {exc}')
+        conn.execute('DELETE FROM published WHERE id=?', (entry_id,))
+        conn.commit()
+    return {'ok': True}
+
+
+@app.get('/audio/{entry_id}')
+def stream_audio(entry_id: int):
+    with _db() as conn:
+        row = conn.execute('SELECT s3_key, filename FROM published WHERE id=?', (entry_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail='Not found')
+    obj  = _get_s3().get_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
+    fname = (row['filename'] or 'recording').rstrip('.zip') + '.wav'
+    return StreamingResponse(
+        obj['Body'],
+        media_type='audio/wav',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

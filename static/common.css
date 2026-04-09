@@ -223,6 +223,55 @@ canvas { display: block; width: 100%; height: 160px; }
 .canvas-play-btn:hover:not(:disabled) { background: rgba(124,158,248,0.2); border-color: #7c9ef8; }
 .canvas-play-btn:disabled { opacity: 0.3; cursor: default; }
 
+/* ── Publish / globe badge ── */
+.pub-filter-th {
+  min-width: 80px;
+  white-space: nowrap;
+}
+.log-pub-cell {
+  text-align: center;
+  width: 28px;
+  padding: 0 4px;
+}
+.pub-badge, .pub-badge-inline {
+  font-size: 14px;
+  cursor: default;
+  user-select: none;
+}
+.log-row-published {
+  background: rgba(124,158,248,0.04);
+}
+.log-row-published:hover {
+  background: rgba(124,158,248,0.09);
+}
+.log-filename-pub {
+  color: #888ea8;
+  cursor: default !important;
+}
+.log-pub-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #888ea8;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 1px 4px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.log-pub-btn:hover:not(:disabled) { color: #7c9ef8; border-color: #7c9ef8; }
+.log-pub-btn:disabled { opacity: 0.35; cursor: default; }
+.log-del-pub-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #888ea8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 1px 4px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.log-del-pub-btn:hover { color: #e05555; border-color: #e05555; }
+
 /* Passage type selector */
 .passage-selector {
   display: flex;

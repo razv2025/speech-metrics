@@ -53,6 +53,176 @@ const CPP_VOICE_THRESH = 1.0; // minimum CPP (dB) for a frame to count as voiced
 const SERVER_URL      = ''; // relative — HTML and API served from same origin
 
 /* ════════════════════════════════════════════
+   PUBLISH — identity, cache, actions
+════════════════════════════════════════════ */
+function _getUserId() {
+  let uid = localStorage.getItem('speech-metrics-uid');
+  if (!uid) {
+    uid = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    localStorage.setItem('speech-metrics-uid', uid);
+  }
+  return uid;
+}
+
+// In-memory cache of published entries per task (fetched from server)
+const _publishedEntries = { 1: [], 2: [], 3: [] };
+// Filter state per task: 'all' | 'mine' | 'published'
+const _pubFilter = { 1: 'all', 2: 'all', 3: 'all' };
+
+async function fetchPublished(task) {
+  try {
+    const resp = await fetch(`${SERVER_URL}/published/task${task}`);
+    if (!resp.ok) return;
+    const rows = await resp.json();
+    const myId = _getUserId();
+    _publishedEntries[task] = rows.map(r => ({
+      ...r.metrics,
+      id: r.id,
+      filename: r.filename,
+      timestamp: r.published_at,
+      audio_sr: r.audio_sr,
+      duration_s: r.duration_s,
+      version: r.version,
+      _published: true,
+      _mine: r.user_id === myId,
+    }));
+    renderLogTable(task);
+  } catch (e) { /* server may be unreachable */ }
+}
+
+function cycleViewFilter(task) {
+  const order = ['all', 'mine', 'published'];
+  _pubFilter[task] = order[(order.indexOf(_pubFilter[task]) + 1) % order.length];
+  renderLogTable(task);
+}
+
+async function publishEntry(task, localId) {
+  if (!logDB) return;
+  const btn = document.querySelector(`.log-pub-btn[data-id="${localId}"][data-task="${task}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  try {
+    const entry = await new Promise((res, rej) => {
+      const req = logDB.transaction('task' + task, 'readonly').objectStore('task' + task).get(localId);
+      req.onsuccess = e => res(e.target.result);
+      req.onerror   = () => rej(new Error('DB read failed'));
+    });
+    if (!entry || !entry.audioData) throw new Error('No audio data');
+
+    // Extract metrics
+    const skipKeys = new Set(['duration_s', 'analysis_duration_s']);
+    const metrics  = {};
+    LOG_METRICS[task].forEach(m => {
+      if (!skipKeys.has(m.key) && entry[m.key] != null) metrics[m.key] = entry[m.key];
+    });
+
+    const metadata = {
+      user_id: _getUserId(),
+      filename: entry.filename,
+      metrics,
+      reference_text: entry.referenceText || null,
+      audio_sr: entry.audioSR || asrSampleRate,
+      duration_s: entry.duration_s || null,
+      version: entry.version || null,
+    };
+
+    const form = new FormData();
+    form.append('file', new Blob([entry.audioData], { type: 'audio/wav' }), 'recording.wav');
+    form.append('metadata', JSON.stringify(metadata));
+
+    const resp = await fetch(`${SERVER_URL}/publish/task${task}`, { method: 'POST', body: form });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const result = await resp.json();
+
+    // Mark local entry as published
+    await new Promise((res, rej) => {
+      const tx    = logDB.transaction('task' + task, 'readwrite');
+      const store = tx.objectStore('task' + task);
+      const req   = store.get(localId);
+      req.onsuccess = ev => {
+        const e = ev.target.result;
+        if (!e) { rej(new Error('Entry gone')); return; }
+        e.published_id = result.id;
+        store.put(e).onsuccess = res;
+      };
+      req.onerror = rej;
+    });
+
+    await fetchPublished(task);
+    renderLogTable(task);
+  } catch (err) {
+    console.error('Publish failed:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '🌐'; }
+  }
+}
+
+async function deletePublishedEntry(task, pubId) {
+  try {
+    const resp = await fetch(`${SERVER_URL}/published/${pubId}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    _publishedEntries[task] = _publishedEntries[task].filter(e => e.id !== pubId);
+    renderLogTable(task);
+  } catch (err) {
+    console.error('Delete published failed:', err);
+  }
+}
+
+async function replayPublishedEntry(task, pubId) {
+  const btn = document.querySelector(`.log-play-btn[data-pub-id="${pubId}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '↻'; btn.classList.add('loading'); }
+
+  try {
+    const pub = (_publishedEntries[task] || []).find(e => e.id === pubId);
+    if (!pub) throw new Error('Entry not in cache; refresh page');
+
+    // Download audio from server proxy
+    const audioResp = await fetch(`${SERVER_URL}/audio/${pubId}`);
+    if (!audioResp.ok) throw new Error('Audio download failed');
+    const arrayBuf = await audioResp.arrayBuffer();
+
+    // Decode to mono float
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const decoded = await tempCtx.decodeAudioData(arrayBuf.slice(0));
+    await tempCtx.close();
+    const mono = new Float32Array(decoded.length);
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      const ch = decoded.getChannelData(c);
+      for (let i = 0; i < mono.length; i++) mono[i] += ch[i];
+    }
+    for (let i = 0; i < mono.length; i++) mono[i] /= decoded.numberOfChannels;
+
+    asrAudioBuf   = Array.from(mono);
+    asrSampleRate = pub.audio_sr || decoded.sampleRate;
+    currentFilename = pub.filename || 'published';
+
+    // Send to server for re-analysis
+    const form = new FormData();
+    form.append('file', new Blob([arrayBuf], { type: 'audio/wav' }), 'recording.wav');
+    if (task === 3 && pub.reference_text) form.append('reference_text', pub.reference_text);
+    const t0 = Date.now();
+    const serverPromise = fetch(`${SERVER_URL}/analyze/task${task}`, { method: 'POST', body: form })
+      .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`));
+
+    _replayMode = true;
+    await processUploadedAudio();
+
+    const d = await serverPromise;
+    const analysis_duration_s = (Date.now() - t0) / 1000;
+    _applyServerMetricsToUI(task, d);
+    setStatus('Analysis complete', false);
+
+    // Create a NEW local entry (not updating the published one)
+    addPendingLogEntry(task);
+    _fillPendingLogEntry(task, d, analysis_duration_s);
+
+    if (btn) { btn.disabled = false; btn.textContent = '↑'; btn.classList.remove('loading'); }
+  } catch (err) {
+    console.error('Published replay failed:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '↑'; btn.classList.remove('loading'); }
+  }
+}
+
+/* ════════════════════════════════════════════
    SESSION RESET
 ════════════════════════════════════════════ */
 function _defaultFilename(task) {
@@ -1883,25 +2053,44 @@ function _fmtTs(iso) {
 }
 
 function renderLogTable(task) {
-  _getAllLogEntries(task).then(entries => {
+  _getAllLogEntries(task).then(localEntries => {
     const wrap   = document.getElementById('log-table-' + task);
     const delBtn = document.getElementById('log-delete-' + task);
     const expBtn = document.getElementById('log-export-' + task);
     if (!wrap) return;
-    if (entries.length === 0) {
+
+    const myId     = _getUserId();
+    const filter   = _pubFilter[task] || 'all';
+    const published = _publishedEntries[task] || [];
+
+    // Build merged display list
+    let display;
+    if (filter === 'mine') {
+      display = localEntries;
+    } else if (filter === 'published') {
+      display = published;
+    } else { // 'all'
+      const myPubIds = new Set(localEntries.filter(e => e.published_id).map(e => e.published_id));
+      display = [
+        ...localEntries,
+        ...published.filter(e => !myPubIds.has(e.id)),
+      ];
+    }
+
+    if (display.length === 0) {
       wrap.innerHTML = '<p class="log-empty">No analyses recorded yet.</p>';
       if (delBtn) delBtn.disabled = true;
       if (expBtn) expBtn.disabled = true;
       return;
     }
-    if (expBtn) expBtn.disabled = false;
+    if (expBtn) expBtn.disabled = filter === 'published'; // can't TSV-export published (no local IDs)
+
     const metrics = LOG_METRICS[task];
 
-    // Sort entries
+    // Sort
     const sort = _sortState[task];
-    let display;
     if (sort) {
-      display = entries.slice().sort((a, b) => {
+      display = display.slice().sort((a, b) => {
         const av = a[sort.key], bv = b[sort.key];
         if (av == null && bv == null) return 0;
         if (av == null) return 1;
@@ -1911,37 +2100,75 @@ function renderLogTable(task) {
         return sort.dir === 'asc' ? cmp : -cmp;
       });
     } else {
-      display = entries.slice().reverse(); // newest first (default)
+      display = display.slice().reverse();
     }
 
+    // Filter header label
+    const filterLabel = { all: '🌐 All', mine: '👤 Mine', published: '🌐 Published' }[filter];
+
     let html = '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
-    html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
+    html += '<th class="pub-filter-th sortable" onclick="cycleViewFilter(' + task + ')" title="Click to filter by visibility">' + filterLabel + '</th>';
+    if (filter !== 'published') {
+      html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
+    } else {
+      html += '<th></th>';
+    }
     html += _thSort(task, 'filename', 'File');
     metrics.forEach(m => { html += _thSort(task, m.key, m.label.replace('\n', '<br>')); });
     html += _thSort(task, 'timestamp', 'Time');
     html += _thSort(task, 'version', 'Ver.');
     html += '</tr></thead><tbody>';
+
     display.forEach(e => {
-      html += '<tr>';
-      const playBtn = e.audioData
-        ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyze">↑</button>'
-        : '';
-      const dlLabel = task === 3 ? '↓ zip' : '↓ wav';
-      const dlTitle = task === 3 ? 'Download ZIP (audio + passage)' : 'Download WAV';
-      const dlBtn = e.audioData
-        ? '<button class="log-dl-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="' + dlTitle + '">' + dlLabel + '</button>'
-        : '';
-      html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + playBtn + dlBtn + '</td>';
-      const fname = _escHtml(e.filename || '—');
-      html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
+      const isPub  = !!e._published;
+      const hasPub = !isPub && e.published_id != null;
+      html += isPub ? '<tr class="log-row-published">' : '<tr>';
+
+      // Globe badge column
+      html += '<td class="log-pub-cell">' + (isPub || hasPub ? '<span class="pub-badge" title="Published">🌐</span>' : '') + '</td>';
+
+      // Actions column
+      if (isPub) {
+        // Published row: delete + re-analyze (creates new local entry)
+        const reBtn = '<button class="log-play-btn" data-pub-id="' + e.id + '" onclick="replayPublishedEntry(' + task + ',' + e.id + ')" title="Re-analyze (creates new local entry)">↑</button>';
+        const dlBtn = '<button class="log-dl-btn" onclick="window.open(\'' + SERVER_URL + '/audio/' + e.id + '\')" title="Download audio">↓ wav</button>';
+        const rmBtn = '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>';
+        html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + rmBtn + '</td>';
+      } else {
+        // Local row
+        const reBtn = e.audioData
+          ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyze">↑</button>'
+          : '';
+        const dlLabel = task === 3 ? '↓ zip' : '↓ wav';
+        const dlTitle = task === 3 ? 'Download ZIP (audio + passage)' : 'Download WAV';
+        const dlBtn = e.audioData
+          ? '<button class="log-dl-btn" onclick="downloadLogAudio(event,' + task + ',' + e.id + ')" title="' + dlTitle + '">' + dlLabel + '</button>'
+          : '';
+        const pubBtn = (e.audioData && !hasPub)
+          ? '<button class="log-pub-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="publishEntry(' + task + ',' + e.id + ')" title="Publish so everyone can see it">🌐</button>'
+          : (hasPub ? '<span class="pub-badge-inline" title="Already published">🌐</span>' : '');
+        html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + reBtn + dlBtn + pubBtn + '</td>';
+      }
+
+      // Filename column
+      if (isPub) {
+        html += '<td class="log-filename log-filename-pub" title="' + _escHtml(e.filename || '') + '">' + _escHtml(e.filename || '—') + '</td>';
+      } else {
+        const fname = _escHtml(e.filename || '—');
+        html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
+      }
+
+      // Metric cells
       metrics.forEach(m => {
         const v = e[m.key];
         html += '<td>' + (v != null ? fmt(parseFloat(v), m.dec) : '—') + '</td>';
       });
+
       html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
-      html += '<td class="log-ts" title="' + _escHtml(e.version||'') + '">' + _escHtml(e.version || '—') + '</td>';
+      html += '<td class="log-ts" title="' + _escHtml(e.version || '') + '">' + _escHtml(e.version || '—') + '</td>';
       html += '</tr>';
     });
+
     html += '</tbody></table></div>';
     wrap.innerHTML = html;
     if (delBtn) delBtn.disabled = true;
@@ -2141,3 +2368,4 @@ setupDragDrop();
 initScales();
 initAudioPlayback();
 if (CURRENT_TASK === 3) setPassageType('paragraph');
+fetchPublished(CURRENT_TASK);
