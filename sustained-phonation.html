@@ -6,98 +6,105 @@
 <title>Sustained Phonation</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<link rel="stylesheet" href="/static/common.css?v=9">
+<link rel="stylesheet" href="/static/common.css?v=10">
 </head>
 <body>
 
-<nav id="sidebar">
-  <a class="sidebar-brand" href="/">Speech<br>Assessment</a>
-  <a class="nav-item" id="nav-home" href="/">Menu</a>
-  <a class="nav-sub" id="nav-ph" href="/sustained-phonation">Sustained Phonation</a>
-  <a class="nav-sub" id="nav-pg" href="/pitch-glides">Pitch Glide</a>
-  <a class="nav-sub" id="nav-rp" href="/reading-passage">Reading Passage</a>
-</nav>
-<script>(function(){var m={'/':'nav-home','/sustained-phonation':'nav-ph','/pitch-glides':'nav-pg','/reading-passage':'nav-rp'};var el=document.getElementById(m[location.pathname]);if(el)el.classList.add('active');})();</script>
-
 <div id="task-screen">
-  <div class="task-header">
-    <div class="task-title-block">
-      <h2>Sustained Phonation /Ahhh/</h2>
-      <p>Take a deep breath, then sustain the vowel /Ahhh/ as long and steadily as possible.</p>
-    </div>
-  </div>
+  <div class="task-top">
+    <div class="task-main">
+      <div class="task-header">
+        <div class="task-title-block">
+          <h2>Sustained Phonation /Ahhh/</h2>
+          <p>Take a deep breath, then sustain the vowel /Ahhh/ as long and steadily as possible.</p>
+        </div>
+      </div>
 
-  <div class="record-row">
-    <button class="record-btn idle" id="record-btn" onclick="toggleRecording()">
-      <span class="pulse-dot"></span>
-      <span id="btn-label">Start Recording</span>
-    </button>
-    <span id="status-text">Ready</span>
-  </div>
+      <div class="record-row">
+        <button class="record-btn idle" id="record-btn" onclick="toggleRecording()">
+          <span class="pulse-dot"></span>
+          <span id="btn-label">Start Recording</span>
+        </button>
+        <span id="status-text">Ready</span>
+      </div>
 
-  <div id="server-error-banner" style="display:none">
-    <div class="server-error-box">
-      <strong>&#9888; Analysis server not reachable</strong>
-      <p>The Praat analysis server must be reachable before recording.
-         Metric values cannot be computed without it.</p>
-      <button onclick="document.getElementById('server-error-banner').style.display='none'">Dismiss</button>
-    </div>
-  </div>
+      <div id="server-error-banner" style="display:none">
+        <div class="server-error-box">
+          <strong>&#9888; Analysis server not reachable</strong>
+          <p>The Praat analysis server must be reachable before recording.
+             Metric values cannot be computed without it.</p>
+          <button onclick="document.getElementById('server-error-banner').style.display='none'">Dismiss</button>
+        </div>
+      </div>
 
-  <div id="t1-content">
-    <div class="canvas-wrap">
-      <canvas id="waveform-canvas"></canvas>
-    </div>
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label">F0</div>
-        <div class="metric-value" id="t1-f0">—</div>
-        <div class="metric-unit">Hz</div>
-        <div class="metric-desc">Average rate of vocal fold vibration</div>
+      <div id="t1-content">
+        <div class="canvas-wrap">
+          <canvas id="waveform-canvas"></canvas>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">F0</div>
+            <div class="metric-value" id="t1-f0">—</div>
+            <div class="metric-unit">Hz</div>
+            <div class="metric-desc">Average rate of vocal fold vibration</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">SPL</div>
+            <div class="metric-value" id="t1-spl">—</div>
+            <div class="metric-unit">dB</div>
+            <div class="metric-desc">Acoustic intensity (loudness)</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">MPT</div>
+            <div class="metric-value" id="t1-mpt">0.0</div>
+            <div class="metric-unit">sec</div>
+            <div class="metric-desc">Duration a vowel can be sustained</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Jitter</div>
+            <div class="metric-value" id="t1-jitter">—</div>
+            <div class="metric-unit">%</div>
+            <div class="metric-desc">Cycle-to-cycle frequency variability</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Shimmer</div>
+            <div class="metric-value" id="t1-shimmer">—</div>
+            <div class="metric-unit">%</div>
+            <div class="metric-desc">Cycle-to-cycle amplitude variability</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">CPP</div>
+            <div class="metric-value" id="t1-cpp">—</div>
+            <div class="metric-unit">dB</div>
+            <div class="metric-desc">Overall voice quality</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">HNR</div>
+            <div class="metric-value" id="t1-hnr">—</div>
+            <div class="metric-unit">dB</div>
+            <div class="metric-desc">Amount of noise in signal</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Noise Floor</div>
+            <div class="metric-value" id="t1-noise">—</div>
+            <div class="metric-unit">dB</div>
+            <div class="metric-desc">Ambient background noise level</div>
+          </div>
+        </div>
       </div>
-      <div class="metric-card">
-        <div class="metric-label">SPL</div>
-        <div class="metric-value" id="t1-spl">—</div>
-        <div class="metric-unit">dB</div>
-        <div class="metric-desc">Acoustic intensity (loudness)</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">MPT</div>
-        <div class="metric-value" id="t1-mpt">0.0</div>
-        <div class="metric-unit">sec</div>
-        <div class="metric-desc">Duration a vowel can be sustained</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Jitter</div>
-        <div class="metric-value" id="t1-jitter">—</div>
-        <div class="metric-unit">%</div>
-        <div class="metric-desc">Cycle-to-cycle frequency variability</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Shimmer</div>
-        <div class="metric-value" id="t1-shimmer">—</div>
-        <div class="metric-unit">%</div>
-        <div class="metric-desc">Cycle-to-cycle amplitude variability</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">CPP</div>
-        <div class="metric-value" id="t1-cpp">—</div>
-        <div class="metric-unit">dB</div>
-        <div class="metric-desc">Overall voice quality</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">HNR</div>
-        <div class="metric-value" id="t1-hnr">—</div>
-        <div class="metric-unit">dB</div>
-        <div class="metric-desc">Amount of noise in signal</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Noise Floor</div>
-        <div class="metric-value" id="t1-noise">—</div>
-        <div class="metric-unit">dB</div>
-        <div class="metric-desc">Ambient background noise level</div>
-      </div>
-    </div>
+    </div><!-- /.task-main -->
+
+    <nav id="sidebar">
+      <a class="sidebar-brand" href="/">Speech<br>Assessment</a>
+      <a class="nav-item" id="nav-home" href="/">Menu</a>
+      <a class="nav-sub" id="nav-ph" href="/sustained-phonation">Sustained Phonation</a>
+      <a class="nav-sub" id="nav-pg" href="/pitch-glides">Pitch Glide</a>
+      <a class="nav-sub" id="nav-rp" href="/reading-passage">Reading Passage</a>
+    </nav>
+    <script>(function(){var m={'/':'nav-home','/sustained-phonation':'nav-ph','/pitch-glides':'nav-pg','/reading-passage':'nav-rp'};var el=document.getElementById(m[location.pathname]);if(el)el.classList.add('active');})();</script>
+  </div><!-- /.task-top -->
+
+  <div class="task-log">
     <div class="log-section">
       <div class="log-header">
         <span class="log-title">Recent Analyses</span>
@@ -108,10 +115,10 @@
       </div>
       <div id="log-table-1"></div>
     </div>
-  </div>
-</div>
+  </div><!-- /.task-log -->
+</div><!-- /#task-screen -->
 
 <script>const CURRENT_TASK = 1;</script>
-<script src="/static/common.js?v=9"></script>
+<script src="/static/common.js?v=10"></script>
 </body>
 </html>

@@ -5,19 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Speech Assessment Tool</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/common.css?v=9">
+<link rel="stylesheet" href="/static/common.css?v=10">
 </head>
 <body>
 
-<nav id="sidebar">
-  <a class="sidebar-brand" href="/">Speech<br>Assessment</a>
-  <a class="nav-item" id="nav-home" href="/">Menu</a>
-  <a class="nav-sub" id="nav-ph" href="/sustained-phonation">Sustained Phonation</a>
-  <a class="nav-sub" id="nav-pg" href="/pitch-glides">Pitch Glide</a>
-  <a class="nav-sub" id="nav-rp" href="/reading-passage">Reading Passage</a>
-</nav>
-<script>(function(){var m={'/':'nav-home','/sustained-phonation':'nav-ph','/pitch-glides':'nav-pg','/reading-passage':'nav-rp'};var el=document.getElementById(m[location.pathname]);if(el)el.classList.add('active');})();</script>
-
+<div class="task-top" style="min-height:100vh">
 <div id="menu-screen">
   <div class="menu-header">
     <div class="logo-wrap">
@@ -62,7 +54,17 @@
       <span class="metric-count">9 metrics</span>
     </a>
   </div>
-</div>
+</div><!-- /#menu-screen -->
+
+  <nav id="sidebar">
+    <a class="sidebar-brand" href="/">Speech<br>Assessment</a>
+    <a class="nav-item" id="nav-home" href="/">Menu</a>
+    <a class="nav-sub" id="nav-ph" href="/sustained-phonation">Sustained Phonation</a>
+    <a class="nav-sub" id="nav-pg" href="/pitch-glides">Pitch Glide</a>
+    <a class="nav-sub" id="nav-rp" href="/reading-passage">Reading Passage</a>
+  </nav>
+  <script>(function(){var m={'/':'nav-home','/sustained-phonation':'nav-ph','/pitch-glides':'nav-pg','/reading-passage':'nav-rp'};var el=document.getElementById(m[location.pathname]);if(el)el.classList.add('active');})();</script>
+</div><!-- /.task-top -->
 
 </body>
 </html>

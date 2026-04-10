@@ -88,12 +88,6 @@ body {
 }
 
 /* ── TASK SCREEN ── */
-#task-screen {
-  display: block;
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 24px 24px 48px;
-}
 .task-header {
   display: flex;
   align-items: center;
@@ -636,17 +630,44 @@ body.drag-over::after {
   font-style: italic;
 }
 
+/* ── PAGE LAYOUT ── */
+.task-top {
+  display: flex;
+  align-items: stretch;
+}
+.task-main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 20px;
+}
+#task-screen {
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+#menu-screen {
+  flex: 1;
+  max-width: 900px;
+  padding: 48px 24px;
+  margin: 0;
+}
+.task-log {
+  border-top: 1px solid #1e2133;
+  padding: 20px 20px 48px;
+}
+
 /* ── SIDEBAR ── */
 #sidebar {
-  position: fixed;
-  top: 0; left: 0;
   width: 188px;
-  height: 100vh;
+  flex-shrink: 0;
   background: #0d0f18;
-  border-right: 1px solid #1e2133;
+  border-left: 1px solid #1e2133;
   padding: 20px 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
   overflow-y: auto;
-  z-index: 100;
 }
 .sidebar-brand {
   display: block;
@@ -682,10 +703,9 @@ body.drag-over::after {
 }
 .nav-sub:hover { color: #c8cedf; background: rgba(124,158,248,0.05); }
 .nav-sub.active { color: #7c9ef8; border-left-color: #7c9ef8; background: rgba(124,158,248,0.07); }
-#menu-screen, #task-screen { margin-left: 188px; }
 @media (max-width: 680px) {
-  #sidebar { position: relative; width: 100%; height: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 10px 16px; border-right: none; border-bottom: 1px solid #1e2133; }
+  .task-top { flex-direction: column-reverse; }
+  #sidebar { width: 100%; height: auto; position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 10px 16px; border-left: none; border-bottom: 1px solid #1e2133; }
   .sidebar-brand { border-bottom: none; margin-bottom: 0; padding: 0 12px 0 0; }
-  .nav-item, .nav-sub { padding: 5px 10px; font-size: 0.78rem; border-left: none; }
-  #menu-screen, #task-screen { margin-left: 0; }
+  .nav-item, .nav-sub { padding: 5px 10px; font-size: 0.78rem; border-left: none !important; }
 }
