@@ -61,6 +61,14 @@ app.add_middleware(
 _STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 # ---------------------------------------------------------------------------
 # Publish infrastructure — S3 + SQLite
 # ---------------------------------------------------------------------------
