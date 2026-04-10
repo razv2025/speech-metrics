@@ -661,12 +661,13 @@ body.drag-over::after {
 #sidebar {
   width: 564px;
   flex-shrink: 0;
+  align-self: flex-start;
   background: #0d0f18;
   border-left: 1px solid #1e2133;
   padding: 20px 0;
   position: sticky;
   top: 0;
-  height: 100vh;
+  max-height: 100vh;
   overflow-y: auto;
 }
 .sidebar-brand {
