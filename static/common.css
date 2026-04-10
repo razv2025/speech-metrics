@@ -659,7 +659,7 @@ body.drag-over::after {
 
 /* ── SIDEBAR ── */
 #sidebar {
-  width: 188px;
+  width: 564px;
   flex-shrink: 0;
   background: #0d0f18;
   border-left: 1px solid #1e2133;
