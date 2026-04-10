@@ -672,7 +672,7 @@ body.drag-over::after {
 .sidebar-brand {
   display: block;
   padding: 0 18px 14px;
-  font-size: 0.78rem;
+  font-size: 1.56rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #7c9ef8;
@@ -686,7 +686,7 @@ body.drag-over::after {
   padding: 7px 18px;
   color: #888ea8;
   text-decoration: none;
-  font-size: 0.82rem;
+  font-size: 1.64rem;
   font-weight: 600;
   transition: color 0.15s, background 0.15s;
 }
@@ -697,7 +697,7 @@ body.drag-over::after {
   padding: 6px 18px 6px 30px;
   color: #555c75;
   text-decoration: none;
-  font-size: 0.8rem;
+  font-size: 1.6rem;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   border-left: 2px solid transparent;
 }
