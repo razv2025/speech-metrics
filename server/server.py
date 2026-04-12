@@ -648,10 +648,7 @@ async def hangman_guess(file: UploadFile = File(...)):
         f.write(audio_bytes)
         tmp_path = f.name
     try:
-        segs, _ = get_whisper().transcribe(
-            tmp_path, language='en', beam_size=5, best_of=5,
-            initial_prompt="Hangman game. The user says a single letter or a word."
-        )
+        segs, _ = get_whisper().transcribe(tmp_path, language='en', beam_size=1)
         transcript = ' '.join(s.text for s in segs).strip()
     finally:
         os.unlink(tmp_path)
