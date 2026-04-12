@@ -45,6 +45,7 @@ const PHONETIC = {
   'uniform':'U','victor':'V','whiskey':'W','x-ray':'X','xray':'X',
   'yankee':'Y','zulu':'Z',
   'ay':'A','bee':'B','see':'C','sea':'C','dee':'D',
+  'aye':'I','eye':'I',
   'eff':'F','gee':'G','aitch':'H','jay':'J','kay':'K',
   'el':'L','em':'M','en':'N','oh':'O','pee':'P',
   'cue':'Q','queue':'Q','are':'R','ess':'S','tee':'T',
@@ -72,7 +73,7 @@ let isSpeaking = false;
 let silenceTimer = null;
 let speechStartTime = 0;
 const RMS_THRESHOLD = 0.015;
-const SILENCE_MS = 850;
+const SILENCE_MS = 400;
 const MIN_SPEECH_MS = 120;
 
 function newGame() {
