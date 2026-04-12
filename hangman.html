@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hangman</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/common.css">
+</head>
+<body>
+
+<div id="task-screen">
+  <div class="task-top">
+    <div class="task-main">
+      <div class="task-header">
+        <div class="task-title-block">
+          <h2>Hangman</h2>
+          <p>Guess the secret word letter by letter — speak each letter aloud.</p>
+        </div>
+      </div>
+
+      <div id="hm-game">
+        <div id="hm-svg-wrap">
+          <svg id="hm-svg" viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+            <!-- Gallows (always visible) -->
+            <line x1="10" y1="235" x2="190" y2="235" stroke="#3d4566" stroke-width="4" stroke-linecap="round"/>
+            <line x1="50" y1="235" x2="50"  y2="10"  stroke="#3d4566" stroke-width="4" stroke-linecap="round"/>
+            <line x1="50" y1="10"  x2="150" y2="10"  stroke="#3d4566" stroke-width="4" stroke-linecap="round"/>
+            <line x1="50" y1="40"  x2="80"  y2="10"  stroke="#3d4566" stroke-width="3" stroke-linecap="round"/>
+            <line x1="150" y1="10" x2="150" y2="38"  stroke="#3d4566" stroke-width="3" stroke-linecap="round"/>
+            <!-- Body parts (hidden until wrong guesses) -->
+            <!-- 1: Head -->
+            <circle id="hm-head" cx="150" cy="55" r="17" stroke="#7c9ef8" stroke-width="3" fill="none" opacity="0"/>
+            <!-- 2: Body -->
+            <line id="hm-body" x1="150" y1="72" x2="150" y2="135" stroke="#7c9ef8" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <!-- 3: Left arm -->
+            <line id="hm-larm" x1="150" y1="90" x2="122" y2="118" stroke="#7c9ef8" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <!-- 4: Right arm -->
+            <line id="hm-rarm" x1="150" y1="90" x2="178" y2="118" stroke="#7c9ef8" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <!-- 5: Left leg -->
+            <line id="hm-lleg" x1="150" y1="135" x2="122" y2="170" stroke="#7c9ef8" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <!-- 6: Right leg -->
+            <line id="hm-rleg" x1="150" y1="135" x2="178" y2="170" stroke="#7c9ef8" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <!-- 7: Face (X eyes) -->
+            <g id="hm-face" opacity="0">
+              <line x1="143" y1="49" x2="148" y2="54" stroke="#e05c5c" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="148" y1="49" x2="143" y2="54" stroke="#e05c5c" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="153" y1="49" x2="158" y2="54" stroke="#e05c5c" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="158" y1="49" x2="153" y2="54" stroke="#e05c5c" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M143 63 Q150 59 157 63" stroke="#e05c5c" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g>
+          </svg>
+          <div id="hm-chances">
+            <span id="hm-chances-num">7</span> guesses remaining
+          </div>
+        </div>
+
+        <div id="hm-right">
+          <div id="hm-word-display"></div>
+          <div id="hm-wrong-section">
+            <div class="hm-section-label">Wrong guesses</div>
+            <div id="hm-wrong-letters"></div>
+          </div>
+          <div id="hm-status-row">
+            <div id="hm-transcript-last"></div>
+            <div id="hm-status-msg"></div>
+          </div>
+          <div id="hm-controls">
+            <button id="hm-listen-btn" class="record-btn idle" onclick="toggleListening()">
+              <span class="pulse-dot"></span>
+              <span id="hm-listen-label">Start Listening</span>
+            </button>
+            <button id="hm-new-btn" class="hm-new-btn" onclick="newGame()">New Game</button>
+          </div>
+          <div id="hm-result-banner" style="display:none"></div>
+        </div>
+      </div>
+
+    </div><!-- /.task-main -->
+
+    <nav id="sidebar">
+      <a class="sidebar-brand" href="/">Speech<br>Assessment</a>
+      <a class="nav-item" id="nav-home" href="/">Menu</a>
+      <a class="nav-sub" id="nav-ph" href="/sustained-phonation">Sustained Phonation</a>
+      <a class="nav-sub" id="nav-pg" href="/pitch-glides">Pitch Glide</a>
+      <a class="nav-sub" id="nav-rp" href="/reading-passage">Reading Passage</a>
+      <a class="nav-sub" id="nav-hm" href="/hangman">Hangman</a>
+    </nav>
+    <script>(function(){var m={'/':'nav-home','/sustained-phonation':'nav-ph','/pitch-glides':'nav-pg','/reading-passage':'nav-rp','/hangman':'nav-hm'};var el=document.getElementById(m[location.pathname]);if(el)el.classList.add('active');})();</script>
+  </div><!-- /.task-top -->
+</div><!-- /#task-screen -->
+
+<script src="/static/hangman.js"></script>
+</body>
+</html>

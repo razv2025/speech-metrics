@@ -710,3 +710,150 @@ body.drag-over::after {
   .sidebar-brand { border-bottom: none; margin-bottom: 0; padding: 0 12px 0 0; }
   .nav-item, .nav-sub { padding: 5px 10px; font-size: 0.78rem; border-left: none !important; }
 }
+
+/* ── HANGMAN ── */
+#hm-game {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+  padding: 24px 0 12px;
+  flex-wrap: wrap;
+}
+#hm-svg-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+#hm-svg {
+  width: 200px;
+  height: 240px;
+  filter: drop-shadow(0 0 10px rgba(124,158,248,0.15));
+}
+#hm-chances {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: #888ea8;
+  text-align: center;
+}
+#hm-chances-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #7c9ef8;
+}
+#hm-right {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+#hm-word-display {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0 4px;
+}
+.hm-letter {
+  width: 42px;
+  height: 52px;
+  border-bottom: 3px solid #3d4566;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #e0e4ef;
+  letter-spacing: 0;
+  transition: color 0.2s;
+}
+.hm-letter.revealed {
+  color: #7c9ef8;
+  border-bottom-color: #7c9ef8;
+}
+.hm-section-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555c75;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 8px;
+}
+#hm-wrong-letters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 32px;
+  align-items: center;
+  color: #888ea8;
+}
+.hm-wrong-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(224,92,92,0.12);
+  border: 1px solid rgba(224,92,92,0.3);
+  color: #e05c5c;
+  font-weight: 700;
+  font-size: 1rem;
+}
+#hm-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 42px;
+}
+#hm-transcript-last {
+  font-size: 0.82rem;
+  color: #555c75;
+  font-style: italic;
+}
+#hm-status-msg {
+  font-size: 0.95rem;
+  color: #888ea8;
+  min-height: 1.3em;
+}
+#hm-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hm-new-btn {
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid #2a2e42;
+  border-radius: 10px;
+  color: #888ea8;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.hm-new-btn:hover {
+  background: rgba(124,158,248,0.06);
+  border-color: #3d4566;
+  color: #c8cedf;
+}
+#hm-result-banner {
+  padding: 14px 20px;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hm-result-win {
+  background: rgba(92,184,92,0.12);
+  border: 1px solid rgba(92,184,92,0.3);
+  color: #5cb85c;
+}
+.hm-result-lose {
+  background: rgba(224,92,92,0.12);
+  border: 1px solid rgba(224,92,92,0.3);
+  color: #e05c5c;
+}
