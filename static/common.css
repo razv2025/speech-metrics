@@ -682,6 +682,18 @@ body.drag-over::after {
   margin-bottom: 10px;
   line-height: 1.4;
 }
+.nav-user-greeting {
+  padding: 14px 18px 12px;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #7c9ef8;
+  border-bottom: 1px solid #1e2133;
+  margin-bottom: 6px;
+  min-height: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .nav-item {
   display: block;
   padding: 7px 18px;

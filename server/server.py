@@ -10,6 +10,8 @@ Endpoints:
 
 import os
 import ssl
+import base64
+import secrets
 import tempfile
 import traceback
 import json
@@ -23,12 +25,11 @@ import numpy as np
 # Allow Whisper model download through corporate proxies with self-signed certs.
 # This only affects the one-time model download; no external data is sent.
 ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from typing import Optional
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 from scipy.fft import fft, ifft
@@ -68,6 +69,40 @@ async def no_cache_static(request, call_next):
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+# ---------------------------------------------------------------------------
+# Basic Auth
+# Password is loaded from APP_PASSWORD env var (never hardcoded here).
+# ---------------------------------------------------------------------------
+_APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+if not _APP_PASSWORD:
+    print("WARNING: APP_PASSWORD env var not set — all requests will be rejected")
+
+
+def _check_auth(authorization: str) -> bool:
+    if not authorization.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(authorization[6:]).decode("utf-8", errors="replace")
+        _, password = decoded.split(":", 1)
+        return secrets.compare_digest(password.encode("utf-8"), _APP_PASSWORD.encode("utf-8"))
+    except Exception:
+        return False
+
+
+@app.middleware("http")
+async def basic_auth(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+    if _APP_PASSWORD and _check_auth(request.headers.get("Authorization", "")):
+        return await call_next(request)
+    return Response(
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Speech Assessment"'},
+        content="Unauthorized",
+    )
+
 
 # ---------------------------------------------------------------------------
 # Publish infrastructure — S3 + SQLite
@@ -658,6 +693,21 @@ async def hangman_guess(file: UploadFile = File(...)):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/me")
+def get_me(request: Request):
+    auth = request.headers.get("Authorization", "")
+    username = ""
+    if auth.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="replace")
+            username = decoded.split(":", 1)[0]
+        except Exception:
+            pass
+    # Sanitize: printable ASCII only, max 40 chars, strip whitespace
+    username = ''.join(c for c in username if 32 <= ord(c) < 127)[:40].strip()
+    return {"username": username or "User"}
 
 
 def _html(name):

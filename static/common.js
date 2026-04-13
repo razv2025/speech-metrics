@@ -2370,6 +2370,15 @@ async function replayLogEntry(task, id) {
   }
 }
 
+function initUsername() {
+  fetch('/me').then(r => r.json()).then(data => {
+    const name = data.username || '';
+    if (!name) return;
+    const el = document.getElementById('nav-user');
+    if (el) el.textContent = 'Hi, ' + name;
+  }).catch(() => {});
+}
+
 // Initialise on load
 resetSession();
 setBtn(false);
@@ -2380,3 +2389,4 @@ initScales();
 initAudioPlayback();
 if (CURRENT_TASK === 3) setPassageType('paragraph');
 fetchPublished(CURRENT_TASK);
+initUsername();

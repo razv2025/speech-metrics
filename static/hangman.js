@@ -383,4 +383,14 @@ function toggleListening() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
+function initUsername() {
+  fetch('/me').then(r => r.json()).then(data => {
+    const name = data.username || '';
+    if (!name) return;
+    const el = document.getElementById('nav-user');
+    if (el) el.textContent = 'Hi, ' + name;
+  }).catch(() => {});
+}
+
 newGame();
+initUsername();
