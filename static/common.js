@@ -2127,7 +2127,8 @@ function renderLogTable(task) {
 
     let html = '<div class="log-filter-bar">' + filterBtns + '</div>';
     html += '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
-    html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
+    html += '<th class="log-chk-th"><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
+    html += '<th></th>';
     html += _thSort(task, 'filename', 'File');
     html += _thSort(task, 'username', 'User');
     metrics.forEach(m => { html += _thSort(task, m.key, m.label, m.title); });
@@ -2139,14 +2140,19 @@ function renderLogTable(task) {
       const hasPub = !isPub && e.published_id != null;
       html += isPub ? '<tr class="log-row-published">' : '<tr>';
 
-      // Actions column
+      // Checkbox cell (dedicated column, always consistent)
       if (isPub) {
-        // Published row: checkbox + re-analyze + download
+        html += '<td class="log-chk-td"><input type="checkbox" class="log-chk" data-pub-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')"></td>';
+      } else {
+        html += '<td class="log-chk-td"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')"></td>';
+      }
+
+      // Actions cell
+      if (isPub) {
         const reBtn = '<button class="log-play-btn" data-pub-id="' + e.id + '" onclick="replayPublishedEntry(' + task + ',' + e.id + ')" title="Re-analyze (creates new local entry)">↑</button>';
         const dlBtn = '<button class="log-dl-btn" onclick="window.open(\'' + SERVER_URL + '/audio/' + e.id + '\')" title="Download audio">↓ wav</button>';
-        html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-pub-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + reBtn + dlBtn + '</td>';
+        html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + '</td>';
       } else {
-        // Local row
         const reBtn = e.audioData
           ? '<button class="log-play-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="replayLogEntry(' + task + ',' + e.id + ')" title="Re-analyze">↑</button>'
           : '';
@@ -2158,7 +2164,7 @@ function renderLogTable(task) {
         const pubBtn = (e.audioData && !hasPub)
           ? '<button class="log-pub-btn" data-id="' + e.id + '" data-task="' + task + '" onclick="publishEntry(' + task + ',' + e.id + ')" title="Publish so everyone can see it">🌐</button>'
           : (hasPub ? '<span class="pub-badge-inline" title="Already published">🌐</span>' : '');
-        html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + reBtn + dlBtn + pubBtn + '</td>';
+        html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + pubBtn + '</td>';
       }
 
       // Filename column (version folded into tooltip)
