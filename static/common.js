@@ -1904,40 +1904,40 @@ function setupDragDrop() {
 ════════════════════════════════════════════ */
 const LOG_METRICS = {
   1: [
-    { key: 'f0_mean_hz',          label: 'F0 Mean\n(Hz)',   dec: 1 },
-    { key: 'spl_mean_db',         label: 'SPL\n(dB)',       dec: 1 },
-    { key: 'mpt_s',               label: 'MPT\n(s)',        dec: 1 },
-    { key: 'jitter_pct',          label: 'Jitter\n(%)',     dec: 2 },
-    { key: 'shimmer_pct',         label: 'Shimmer\n(%)',    dec: 2 },
-    { key: 'cpp_db',              label: 'CPP\n(dB)',       dec: 1 },
-    { key: 'hnr_db',              label: 'HNR\n(dB)',       dec: 1 },
-    { key: 'noise_floor_db',      label: 'Noise\n(dB)',     dec: 1 },
-    { key: 'duration_s',          label: 'Audio\n(s)',      dec: 1 },
-    { key: 'analysis_duration_s', label: 'Analysis\n(s)',   dec: 1 },
+    { key: 'f0_mean_hz',          label: 'F0μ<br>(Hz)',   dec: 1, title: 'Mean fundamental frequency (Hz)' },
+    { key: 'spl_mean_db',         label: 'SPL<br>(dB)',   dec: 1, title: 'Mean sound pressure level — loudness (dB)' },
+    { key: 'mpt_s',               label: 'MPT<br>(s)',    dec: 1, title: 'Maximum phonation time (s)' },
+    { key: 'jitter_pct',          label: 'Jitr<br>(%)',   dec: 2, title: 'Jitter — cycle-to-cycle frequency variability (%)' },
+    { key: 'shimmer_pct',         label: 'Shim<br>(%)',   dec: 2, title: 'Shimmer — cycle-to-cycle amplitude variability (%)' },
+    { key: 'cpp_db',              label: 'CPP<br>(dB)',   dec: 1, title: 'Cepstral peak prominence — overall voice quality (dB)' },
+    { key: 'hnr_db',              label: 'HNR<br>(dB)',   dec: 1, title: 'Harmonics-to-noise ratio (dB)' },
+    { key: 'noise_floor_db',      label: 'Nois<br>(dB)',  dec: 1, title: 'Ambient noise floor (dB)' },
+    { key: 'duration_s',          label: 'Dur<br>(s)',    dec: 1, title: 'Recording duration (s)' },
+    { key: 'analysis_duration_s', label: 'Anls<br>(s)',   dec: 1, title: 'Server analysis duration (s)' },
   ],
   2: [
-    { key: 'f0_min_hz',           label: 'F0 Min\n(Hz)',    dec: 1 },
-    { key: 'f0_max_hz',           label: 'F0 Max\n(Hz)',    dec: 1 },
-    { key: 'f0_range_st',         label: 'F0 Range\n(ST)',  dec: 1 },
-    { key: 'noise_floor_db',      label: 'Noise\n(dB)',     dec: 1 },
-    { key: 'duration_s',          label: 'Audio\n(s)',      dec: 1 },
-    { key: 'analysis_duration_s', label: 'Analysis\n(s)',   dec: 1 },
+    { key: 'f0_min_hz',           label: 'F0↓<br>(Hz)',   dec: 1, title: 'Lowest achievable pitch (Hz)' },
+    { key: 'f0_max_hz',           label: 'F0↑<br>(Hz)',   dec: 1, title: 'Highest achievable pitch (Hz)' },
+    { key: 'f0_range_st',         label: 'F0R<br>(ST)',   dec: 1, title: 'Pitch range — highest minus lowest (semitones)' },
+    { key: 'noise_floor_db',      label: 'Nois<br>(dB)',  dec: 1, title: 'Ambient noise floor (dB)' },
+    { key: 'duration_s',          label: 'Dur<br>(s)',    dec: 1, title: 'Recording duration (s)' },
+    { key: 'analysis_duration_s', label: 'Anls<br>(s)',   dec: 1, title: 'Server analysis duration (s)' },
   ],
   3: [
-    { key: 'f0_mean_hz',              label: 'F0 Mean\n(Hz)',    dec: 1 },
-    { key: 'f0_std_hz',               label: 'F0 Std\n(Hz)',     dec: 1 },
-    { key: 'cpp_db',                  label: 'CPP\n(dB)',        dec: 1 },
-    { key: 'spl_mean_db',             label: 'SPL\n(dB)',        dec: 1 },
-    { key: 'spl_variability_db',      label: 'SPL Var\n(dB)',    dec: 1 },
-    { key: 'speech_rate_wpm',         label: 'Rate\n(WPM)',      dec: 0 },
-    { key: 'prosody_st',              label: 'Prosody\n(ST)',    dec: 1 },
-    { key: 'noise_floor_db',          label: 'Noise\n(dB)',      dec: 1 },
-    { key: 'avg_pause_s',             label: 'Pause\n(s)',       dec: 2 },
-    { key: 'vsa_khz2',                label: 'VSA\n(kHz²)',      dec: 0 },
-    { key: 'articulation_pct',        label: 'Artic.\n(%)',      dec: 1 },
-    { key: 'consonant_precision_pct', label: 'Conson.\n(%)',     dec: 1 },
-    { key: 'duration_s',              label: 'Audio\n(s)',       dec: 1 },
-    { key: 'analysis_duration_s',     label: 'Analysis\n(s)',    dec: 1 },
+    { key: 'f0_mean_hz',              label: 'F0μ<br>(Hz)',   dec: 1, title: 'Mean fundamental frequency during speech (Hz)' },
+    { key: 'f0_std_hz',               label: 'F0σ<br>(Hz)',   dec: 1, title: 'Pitch standard deviation — variability (Hz)' },
+    { key: 'cpp_db',                  label: 'CPP<br>(dB)',   dec: 1, title: 'Cepstral peak prominence — voice quality (dB)' },
+    { key: 'spl_mean_db',             label: 'SPL<br>(dB)',   dec: 1, title: 'Mean sound pressure level (dB)' },
+    { key: 'spl_variability_db',      label: 'SPLV<br>(dB)',  dec: 1, title: 'SPL variability — loudness modulation (dB)' },
+    { key: 'speech_rate_wpm',         label: 'Rate<br>(syl)', dec: 0, title: 'Speech rate (syllables per minute)' },
+    { key: 'prosody_st',              label: 'Pros<br>(ST)',  dec: 1, title: 'Prosody — pitch range used during speech (semitones)' },
+    { key: 'noise_floor_db',          label: 'Nois<br>(dB)',  dec: 1, title: 'Ambient noise floor (dB)' },
+    { key: 'avg_pause_s',             label: 'Paus<br>(s)',   dec: 2, title: 'Mean inter-speech pause length (s)' },
+    { key: 'vsa_khz2',                label: 'VSA<br>(kHz²)', dec: 0, title: 'Vowel space area — shrinks with vowel centralisation (kHz²)' },
+    { key: 'articulation_pct',        label: 'Art<br>(%)',    dec: 1, title: 'Word accuracy vs. passage (%)' },
+    { key: 'consonant_precision_pct', label: 'Con<br>(%)',    dec: 1, title: 'Consonant precision vs. passage (%)' },
+    { key: 'duration_s',              label: 'Dur<br>(s)',    dec: 1, title: 'Recording duration (s)' },
+    { key: 'analysis_duration_s',     label: 'Anls<br>(s)',   dec: 1, title: 'Server analysis duration (s)' },
   ],
 };
 
@@ -1955,12 +1955,13 @@ function sortLogTable(task, key) {
   renderLogTable(task);
 }
 
-function _thSort(task, key, label) {
+function _thSort(task, key, label, title) {
   const s = _sortState[task];
   const active = s && s.key === key;
   const cls    = active ? ' sort-' + s.dir : '';
   const ind    = active ? (s.dir === 'asc' ? ' ▲' : ' ▼') : '';
-  return '<th class="sortable' + cls + '" onclick="sortLogTable(' + task + ',\'' + key + '\')">' + label + ind + '</th>';
+  const tip    = title ? ' title="' + _escHtml(title) + '"' : '';
+  return '<th class="sortable' + cls + '"' + tip + ' onclick="sortLogTable(' + task + ',\'' + key + '\')">' + label + ind + '</th>';
 }
 
 function initLogDB() {
@@ -2058,7 +2059,11 @@ function _escHtml(s) {
 function _fmtTs(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return dd + '/' + mm + ' ' + hh + ':' + mi;
 }
 
 function renderLogTable(task) {
@@ -2129,9 +2134,8 @@ function renderLogTable(task) {
     }
     html += _thSort(task, 'filename', 'File');
     html += _thSort(task, 'username', 'User');
-    metrics.forEach(m => { html += _thSort(task, m.key, m.label.replace('\n', '<br>')); });
+    metrics.forEach(m => { html += _thSort(task, m.key, m.label, m.title); });
     html += _thSort(task, 'timestamp', 'Time');
-    html += _thSort(task, 'version', 'Ver.');
     html += '</tr></thead><tbody>';
 
     display.forEach(e => {
@@ -2162,15 +2166,16 @@ function renderLogTable(task) {
         html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + reBtn + dlBtn + pubBtn + '</td>';
       }
 
-      // Filename column
+      // Filename column (version folded into tooltip)
+      const _ver = e.version ? ' · v' + e.version : '';
       if (isPub) {
-        html += '<td class="log-filename log-filename-pub" title="' + _escHtml(e.filename || '') + '">' + _escHtml(e.filename || '—') + '</td>';
+        html += '<td class="log-filename log-filename-pub" title="' + _escHtml((e.filename || '') + _ver) + '">' + _escHtml(e.filename || '—') + '</td>';
       } else if (hasPub) {
         const fname = _escHtml(e.filename || '—');
-        html += '<td class="log-filename log-filename-pub" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
+        html += '<td class="log-filename log-filename-pub" title="' + _escHtml((e.filename || '') + _ver + ' (click to rename)') + '" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       } else {
         const fname = _escHtml(e.filename || '—');
-        html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
+        html += '<td class="log-filename" title="' + _escHtml((e.filename || '') + _ver + ' (click to rename)') + '" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       }
 
       // Username cell
@@ -2183,7 +2188,6 @@ function renderLogTable(task) {
       });
 
       html += '<td class="log-ts">' + _fmtTs(e.timestamp) + '</td>';
-      html += '<td class="log-ts" title="' + _escHtml(e.version || '') + '">' + _escHtml(e.version || '—') + '</td>';
       html += '</tr>';
     });
 
