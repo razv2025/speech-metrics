@@ -167,7 +167,7 @@ async function publishEntry(task, localId) {
 
 async function deletePublishedEntry(task, pubId) {
   try {
-    const resp = await fetch(`${SERVER_URL}/published/${pubId}`, { method: 'DELETE' });
+    const resp = await fetch(`${SERVER_URL}/published/${pubId}?user_id=${encodeURIComponent(_getUserId())}`, { method: 'DELETE' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     _publishedEntries[task] = _publishedEntries[task].filter(e => e.id !== pubId);
     renderLogTable(task);
@@ -2148,7 +2148,7 @@ function renderLogTable(task) {
         // Published row: delete + re-analyze (creates new local entry)
         const reBtn = '<button class="log-play-btn" data-pub-id="' + e.id + '" onclick="replayPublishedEntry(' + task + ',' + e.id + ')" title="Re-analyze (creates new local entry)">↑</button>';
         const dlBtn = '<button class="log-dl-btn" onclick="window.open(\'' + SERVER_URL + '/audio/' + e.id + '\')" title="Download audio">↓ wav</button>';
-        const rmBtn = '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>';
+        const rmBtn = e._mine ? '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>' : '';
         html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + rmBtn + '</td>';
       } else {
         // Local row
