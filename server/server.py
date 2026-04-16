@@ -157,6 +157,7 @@ def _init_db():
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 task           INTEGER NOT NULL,
                 user_id        TEXT,
+                username       TEXT,
                 filename       TEXT,
                 published_at   TEXT NOT NULL,
                 s3_key         TEXT NOT NULL,
@@ -167,6 +168,11 @@ def _init_db():
                 version        TEXT
             )
         ''')
+        # Migrate existing table (column added after initial deploy)
+        try:
+            conn.execute('ALTER TABLE published ADD COLUMN username TEXT')
+        except Exception:
+            pass
         conn.commit()
 
 
@@ -612,9 +618,9 @@ async def publish_entry(task_slug: str, file: UploadFile = File(...), metadata: 
     with _db() as conn:
         cur = conn.execute(
             'INSERT INTO published '
-            '(task,user_id,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?)',
-            (task_n, data.get('user_id'), data.get('filename'), now, s3_key,
+            '(task,user_id,username,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            (task_n, data.get('user_id'), data.get('username'), data.get('filename'), now, s3_key,
              json.dumps(data.get('metrics', {})), data.get('reference_text'),
              data.get('audio_sr'), data.get('duration_s'), data.get('version')),
         )
@@ -630,7 +636,7 @@ def get_published(task_slug: str):
         raise HTTPException(status_code=404, detail='Unknown task')
     with _db() as conn:
         rows = conn.execute(
-            'SELECT id,task,user_id,filename,published_at,metrics,audio_sr,duration_s,version '
+            'SELECT id,task,user_id,username,filename,published_at,metrics,audio_sr,duration_s,version '
             'FROM published WHERE task=? ORDER BY published_at DESC', (task_n,),
         ).fetchall()
     result = []

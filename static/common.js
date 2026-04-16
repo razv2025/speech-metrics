@@ -81,6 +81,7 @@ async function fetchPublished(task) {
       ...r.metrics,
       id: r.id,
       filename: r.filename,
+      username: r.username || '',
       timestamp: r.published_at,
       audio_sr: r.audio_sr,
       duration_s: r.duration_s,
@@ -125,6 +126,7 @@ async function publishEntry(task, localId) {
 
     const metadata = {
       user_id: _getUserId(),
+      username: entry.username || _currentUsername,
       filename: entry.filename,
       metrics,
       reference_text: entry.referenceText || null,
@@ -2004,7 +2006,7 @@ function addPendingLogEntry(task) {
     ? encodeWAV(new Float32Array(asrAudioBuf), asrSampleRate)
     : null;
   const duration_s = asrAudioBuf.length / asrSampleRate;
-  const entry = { filename: currentFilename, timestamp: new Date().toISOString(), duration_s };
+  const entry = { filename: currentFilename, username: _currentUsername, timestamp: new Date().toISOString(), duration_s };
   if (audioData) { entry.audioData = audioData; entry.audioSR = asrSampleRate; }
   if (task === 3 && activePassageRef) entry.referenceText = activePassageRef;
   const tx  = logDB.transaction('task' + task, 'readwrite');
@@ -2126,6 +2128,7 @@ function renderLogTable(task) {
       html += '<th></th>';
     }
     html += _thSort(task, 'filename', 'File');
+    html += _thSort(task, 'username', 'User');
     metrics.forEach(m => { html += _thSort(task, m.key, m.label.replace('\n', '<br>')); });
     html += _thSort(task, 'timestamp', 'Time');
     html += _thSort(task, 'version', 'Ver.');
@@ -2169,6 +2172,9 @@ function renderLogTable(task) {
         const fname = _escHtml(e.filename || '—');
         html += '<td class="log-filename" title="' + _escHtml(e.filename || '') + ' (click to rename)" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       }
+
+      // Username cell
+      html += '<td class="log-username">' + _escHtml(e.username || '—') + '</td>';
 
       // Metric cells
       metrics.forEach(m => {
@@ -2370,9 +2376,12 @@ async function replayLogEntry(task, id) {
   }
 }
 
+let _currentUsername = '';
+
 function initUsername() {
   fetch('/me').then(r => r.json()).then(data => {
     const name = data.username || '';
+    _currentUsername = name;
     if (!name) return;
     const el = document.getElementById('nav-user');
     if (el) el.textContent = 'Hi, ' + name;
