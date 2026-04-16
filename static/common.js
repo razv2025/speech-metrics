@@ -2127,11 +2127,7 @@ function renderLogTable(task) {
 
     let html = '<div class="log-filter-bar">' + filterBtns + '</div>';
     html += '<div class="log-table-wrap"><table class="log-table"><thead><tr>';
-    if (filter !== 'published') {
-      html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
-    } else {
-      html += '<th></th>';
-    }
+    html += '<th><input type="checkbox" onchange="logToggleAll(this,' + task + ')" title="Select all"></th>';
     html += _thSort(task, 'filename', 'File');
     html += _thSort(task, 'username', 'User');
     metrics.forEach(m => { html += _thSort(task, m.key, m.label, m.title); });
@@ -2145,11 +2141,10 @@ function renderLogTable(task) {
 
       // Actions column
       if (isPub) {
-        // Published row: delete + re-analyze (creates new local entry)
+        // Published row: checkbox + re-analyze + download
         const reBtn = '<button class="log-play-btn" data-pub-id="' + e.id + '" onclick="replayPublishedEntry(' + task + ',' + e.id + ')" title="Re-analyze (creates new local entry)">↑</button>';
         const dlBtn = '<button class="log-dl-btn" onclick="window.open(\'' + SERVER_URL + '/audio/' + e.id + '\')" title="Download audio">↓ wav</button>';
-        const rmBtn = '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>';
-        html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + rmBtn + '</td>';
+        html += '<td class="log-ctrl-cell"><input type="checkbox" class="log-chk" data-pub-id="' + e.id + '" data-task="' + task + '" onchange="logChkChange(' + task + ')">' + reBtn + dlBtn + '</td>';
       } else {
         // Local row
         const reBtn = e.audioData
@@ -2206,14 +2201,32 @@ function logToggleAll(masterChk, task) {
   logChkChange(task);
 }
 
-function deleteSelected(task) {
-  if (!logDB) return;
-  const ids = [...document.querySelectorAll('.log-chk[data-task="' + task + '"]:checked')].map(c => +c.dataset.id);
-  if (!ids.length) return;
-  const tx    = logDB.transaction('task' + task, 'readwrite');
-  const store = tx.objectStore('task' + task);
-  ids.forEach(id => store.delete(id));
-  tx.oncomplete = () => renderLogTable(task);
+async function deleteSelected(task) {
+  const checked  = [...document.querySelectorAll('.log-chk[data-task="' + task + '"]:checked')];
+  if (!checked.length) return;
+
+  const localIds = checked.filter(c => c.dataset.id).map(c => +c.dataset.id);
+  const pubIds   = checked.filter(c => c.dataset.pubId).map(c => +c.dataset.pubId);
+
+  if (localIds.length && logDB) {
+    await new Promise(resolve => {
+      const tx    = logDB.transaction('task' + task, 'readwrite');
+      const store = tx.objectStore('task' + task);
+      localIds.forEach(id => store.delete(id));
+      tx.oncomplete = resolve;
+    });
+  }
+
+  for (const pubId of pubIds) {
+    try {
+      await fetch(`${SERVER_URL}/published/${pubId}`, { method: 'DELETE' });
+      _publishedEntries[task] = _publishedEntries[task].filter(e => e.id !== pubId);
+    } catch (err) {
+      console.error('Delete published failed:', err);
+    }
+  }
+
+  renderLogTable(task);
 }
 
 function exportLogTSV(task) {
