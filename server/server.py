@@ -648,13 +648,11 @@ def get_published(task_slug: str):
 
 
 @app.delete('/published/{entry_id}')
-def delete_published(entry_id: int, user_id: str = ''):
+def delete_published(entry_id: int):
     with _db() as conn:
-        row = conn.execute('SELECT s3_key, user_id FROM published WHERE id=?', (entry_id,)).fetchone()
+        row = conn.execute('SELECT s3_key FROM published WHERE id=?', (entry_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail='Not found')
-        if row['user_id'] and row['user_id'] != user_id:
-            raise HTTPException(status_code=403, detail='Not your entry')
         try:
             _get_s3().delete_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
         except Exception as exc:

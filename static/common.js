@@ -2118,9 +2118,9 @@ function renderLogTable(task) {
     }
 
     // Filter toggle bar (above table)
-    const filterLabel = { all: '🌐 All', mine: '👤 Mine', published: '🌐 Published' }[filter];
+    const filterLabel = { all: '🌐 All', mine: '👤 Local', published: '🌐 Published' }[filter];
     const filterBtns = ['all', 'mine', 'published'].map(f => {
-      const labels = { all: '🌐 All', mine: '👤 Mine', published: '🌐 Published' };
+      const labels = { all: '🌐 All', mine: '👤 Local', published: '🌐 Published' };
       const active = f === filter ? ' log-filter-btn-active' : '';
       return '<button class="log-filter-btn' + active + '" onclick="setViewFilter(' + task + ',\'' + f + '\')">' + labels[f] + '</button>';
     }).join('');
@@ -2148,7 +2148,7 @@ function renderLogTable(task) {
         // Published row: delete + re-analyze (creates new local entry)
         const reBtn = '<button class="log-play-btn" data-pub-id="' + e.id + '" onclick="replayPublishedEntry(' + task + ',' + e.id + ')" title="Re-analyze (creates new local entry)">↑</button>';
         const dlBtn = '<button class="log-dl-btn" onclick="window.open(\'' + SERVER_URL + '/audio/' + e.id + '\')" title="Download audio">↓ wav</button>';
-        const rmBtn = e._mine ? '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>' : '';
+        const rmBtn = '<button class="log-del-pub-btn" onclick="deletePublishedEntry(' + task + ',' + e.id + ')" title="Delete published entry">🗑</button>';
         html += '<td class="log-ctrl-cell">' + reBtn + dlBtn + rmBtn + '</td>';
       } else {
         // Local row
@@ -2167,12 +2167,10 @@ function renderLogTable(task) {
       }
 
       // Filename column (version folded into tooltip)
+      // Published (S3) entries are always green; local entries are always plain.
       const _ver = e.version ? ' · v' + e.version : '';
       if (isPub) {
         html += '<td class="log-filename log-filename-pub" title="' + _escHtml((e.filename || '') + _ver) + '">' + _escHtml(e.filename || '—') + '</td>';
-      } else if (hasPub) {
-        const fname = _escHtml(e.filename || '—');
-        html += '<td class="log-filename log-filename-pub" title="' + _escHtml((e.filename || '') + _ver + ' (click to rename)') + '" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
       } else {
         const fname = _escHtml(e.filename || '—');
         html += '<td class="log-filename" title="' + _escHtml((e.filename || '') + _ver + ' (click to rename)') + '" onclick="renameLogEntry(this,' + task + ',' + e.id + ')">' + fname + '</td>';
