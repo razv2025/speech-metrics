@@ -9,8 +9,10 @@ Endpoints:
 """
 
 import os
+import re
 import ssl
 import base64
+import difflib
 import secrets
 import tempfile
 import traceback
@@ -675,6 +677,186 @@ def stream_audio(entry_id: int):
         media_type='audio/wav',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Verbal Fluency — word lists, matching, endpoints
+# ---------------------------------------------------------------------------
+
+_VF_WORD_LISTS = {
+    'fruits': [
+        'apple','apricot','avocado','banana','blackberry','blackcurrant','blueberry',
+        'cantaloupe','cherry','clementine','coconut','cranberry','currant','damson',
+        'date','dragon fruit','durian','elderberry','feijoa','fig','gooseberry',
+        'grape','grapefruit','guava','honeydew','jackfruit','kiwi','kumquat',
+        'lemon','lime','lychee','mandarin','mango','melon','mulberry','nectarine',
+        'olive','orange','papaya','passion fruit','peach','pear','persimmon',
+        'pineapple','plum','pomegranate','pomelo','quince','raspberry','rhubarb',
+        'satsuma','soursop','star fruit','strawberry','tangerine','tomato',
+        'ugli fruit','watermelon',
+    ],
+    'animals': [
+        'alligator','ant','antelope','ape','armadillo','baboon','badger','bat',
+        'bear','beaver','bee','bison','boar','buffalo','butterfly','camel','cat',
+        'cheetah','chicken','chimpanzee','cobra','cow','crab','crocodile','deer',
+        'dog','dolphin','donkey','duck','eagle','elephant','elk','falcon','ferret',
+        'fish','flamingo','fox','frog','giraffe','gnu','goat','gorilla','grizzly bear',
+        'hamster','hare','hawk','hedgehog','hippo','hippopotamus','horse','hyena',
+        'ibex','ibis','jackal','jaguar','jellyfish','kangaroo','kestrel','koala',
+        'lemur','leopard','lion','lizard','llama','lobster','lynx','manatee',
+        'monkey','moose','mouse','narwhal','newt','ocelot','octopus','ostrich',
+        'otter','owl','panda','panther','parrot','peacock','penguin','pig','pigeon',
+        'platypus','polar bear','porcupine','puma','rabbit','raccoon','rat','rhino',
+        'rhinoceros','salmon','seahorse','seal','shark','sheep','skunk','snow leopard',
+        'snake','spider','squirrel','swan','tapir','tiger','toad','turkey','turtle',
+        'whale','wolf','wombat','zebra','guinea pig','killer whale','mountain lion',
+    ],
+    'vegetables': [
+        'artichoke','asparagus','aubergine','beetroot','bok choy','broccoli',
+        'brussels sprout','cabbage','carrot','cauliflower','celery','celeriac',
+        'chickpea','chilli','chicory','courgette','corn','cucumber','eggplant',
+        'endive','fennel','garlic','ginger','green bean','kale','leek','lentil',
+        'lettuce','mushroom','okra','onion','parsnip','pea','pepper','potato',
+        'pumpkin','radish','rocket','shallot','spinach','spring onion','squash',
+        'swede','sweet potato','sweetcorn','turnip','watercress','yam','zucchini',
+    ],
+    'colors': [
+        'amber','beige','black','blue','bronze','brown','chartreuse','coral',
+        'cream','crimson','cyan','emerald','fuchsia','gold','gray','grey','green',
+        'indigo','jade','khaki','lavender','lilac','magenta','maroon','mauve',
+        'navy','ochre','olive','orange','periwinkle','pink','purple','red','ruby',
+        'rust','salmon','sapphire','scarlet','silver','tan','taupe','teal',
+        'turquoise','violet','white','yellow',
+    ],
+    'furniture': [
+        'armchair','bar stool','bean bag','bed','bed frame','bench','bookcase',
+        'bookshelf','bunk bed','cabinet','chair','chest','chest of drawers',
+        'closet','coffee table','cot','couch','cupboard','curtain','daybed',
+        'desk','dining chair','dining table','drawer','dresser','end table',
+        'filing cabinet','footstool','futon','hammock','lamp','loveseat',
+        'mirror','nightstand','office chair','ottoman','recliner','rug',
+        'settee','shelf','sideboard','sofa','standing desk','stool','table',
+        'tv stand','wardrobe',
+    ],
+    'jobs': [
+        'accountant','actor','actress','architect','artist','astronaut','baker',
+        'banker','barber','biologist','builder','butcher','carpenter','cashier',
+        'chef','chemist','cleaner','clerk','coach','consultant','courier',
+        'decorator','dentist','designer','detective','diplomat','doctor','driver',
+        'editor','electrician','engineer','farmer','firefighter','fireman',
+        'gardener','geologist','historian','inspector','interpreter','inventor',
+        'journalist','judge','lawyer','librarian','lifeguard','locksmith',
+        'manager','mechanic','midwife','minister','model','musician','nurse',
+        'optician','painter','paramedic','pharmacist','photographer','pilot',
+        'plumber','poet','police','postman','programmer','psychologist',
+        'receptionist','referee','sailor','salesman','scientist','sculptor',
+        'secretary','social worker','software engineer','soldier','solicitor',
+        'surgeon','surveyor','taxi driver','teacher','technician','therapist',
+        'trainer','translator','undertaker','vet','veterinarian','waiter','writer',
+    ],
+}
+
+_VF_FILLERS = {
+    'um','uh','er','ah','hmm','like','the','a','an','and','or','so',
+    'well','i','its','my','ok','okay','let','me','see','think','say',
+    'maybe','also','too','very','really','just','some','any',
+}
+
+def _vf_norm(w: str) -> str:
+    return re.sub(r"[^a-z]", "", w.lower())
+
+def _vf_stem(w: str) -> str:
+    for s in ('ies', 'es', 's'):
+        if w.endswith(s) and len(w) - len(s) >= 3:
+            return w[:-len(s)]
+    return w
+
+def _vf_match_word(word: str, word_list: list) -> str | None:
+    """Return canonical list entry matching word, or None."""
+    w = _vf_norm(word)
+    if not w or len(w) < 2 or w in _VF_FILLERS:
+        return None
+    norm_list = [_vf_norm(x) for x in word_list]
+    canon = dict(zip(norm_list, word_list))
+    # Exact
+    if w in canon:
+        return canon[w]
+    # Stem
+    ws = _vf_stem(w)
+    if ws in canon:
+        return canon[ws]
+    for nw in norm_list:
+        if _vf_stem(nw) == ws:
+            return canon[nw]
+    # Fuzzy
+    m = difflib.get_close_matches(w, norm_list, n=1, cutoff=0.82)
+    if m:
+        return canon[m[0]]
+    return None
+
+def _vf_match_transcript(transcript: str, category: str) -> dict:
+    tokens = re.sub(r"[^\w\s]", "", transcript.lower()).split()
+    tokens = [t for t in tokens if _vf_norm(t) not in _VF_FILLERS and len(_vf_norm(t)) >= 2]
+
+    is_letter = category.startswith('letter:')
+    letter    = category.split(':')[1] if is_letter else ''
+    word_list = [] if is_letter else _VF_WORD_LISTS.get(category, [])
+
+    matched, unmatched = [], []
+    seen_matched = set()
+    i = 0
+    while i < len(tokens):
+        canonical = None
+        # Try bigram first (semantic categories only)
+        if not is_letter and i + 1 < len(tokens):
+            bigram = tokens[i] + ' ' + tokens[i + 1]
+            canonical = _vf_match_word(bigram, word_list)
+            if canonical:
+                if canonical not in seen_matched:
+                    matched.append(canonical)
+                    seen_matched.add(canonical)
+                i += 2
+                continue
+        # Unigram
+        w = _vf_norm(tokens[i])
+        if is_letter:
+            if w.startswith(letter) and len(w) >= 2:
+                if w not in seen_matched:
+                    matched.append(tokens[i])
+                    seen_matched.add(w)
+            else:
+                unmatched.append(tokens[i])
+        else:
+            canonical = _vf_match_word(tokens[i], word_list)
+            if canonical:
+                if canonical not in seen_matched:
+                    matched.append(canonical)
+                    seen_matched.add(canonical)
+            else:
+                unmatched.append(tokens[i])
+        i += 1
+
+    return {'matched': matched, 'unmatched': unmatched}
+
+
+@app.get('/verbal-fluency')
+def serve_verbal_fluency():
+    return _html('verbal-fluency.html')
+
+
+@app.post('/verbal-fluency/transcribe')
+async def vf_transcribe(file: UploadFile = File(...), category: str = Form(...)):
+    audio_bytes = await file.read()
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+        f.write(audio_bytes)
+        tmp_path = f.name
+    try:
+        segs, _ = get_whisper().transcribe(tmp_path, language='en', beam_size=1)
+        transcript = ' '.join(s.text for s in segs).strip()
+    finally:
+        os.unlink(tmp_path)
+    result = _vf_match_transcript(transcript, category)
+    return {'transcript': transcript, **result}
 
 
 @app.get("/hangman")
