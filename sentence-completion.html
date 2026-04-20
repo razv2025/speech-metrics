@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Verbal Fluency</title>
+<title>Sentence Completion</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1d27'/%3E%3Crect x='18' y='7' width='2' height='13' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='10' width='2' height='11' rx='1' fill='%237c9ef8'/%3E%3Crect x='11' y='7' width='9' height='3' rx='1.5' fill='%237c9ef8'/%3E%3Cellipse cx='12' cy='22' rx='3.5' ry='2.5' transform='rotate(-12 12 22)' fill='%237c9ef8'/%3E%3Cellipse cx='19' cy='21' rx='3.5' ry='2.5' transform='rotate(-12 19 21)' fill='%237c9ef8'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/common.css">
 </head>
@@ -15,75 +15,64 @@
 
       <div class="task-header">
         <div class="task-title-block">
-          <h2>Verbal Fluency</h2>
-          <p>Say as many words as you can from the selected category before time runs out.</p>
+          <h2>Sentence Completion</h2>
+          <p>Say the missing word to complete the proverb, idiom, or nursery rhyme.</p>
         </div>
       </div>
 
-      <div id="vf-setup">
+      <div id="sc-setup">
         <div class="vf-setup-row">
           <div class="vf-field">
             <label class="vf-label">Category</label>
-            <select id="vf-category" class="vf-select" onchange="onCategoryChange()"></select>
-          </div>
-          <div class="vf-field">
-            <label class="vf-label">Duration</label>
-            <select id="vf-duration" class="vf-select">
-              <option value="30">30 s</option>
-              <option value="60" selected>60 s</option>
-              <option value="90">90 s</option>
-              <option value="120">120 s</option>
+            <select id="sc-category" class="vf-select" onchange="onSCCategoryChange()">
+              <option value="all">All</option>
+              <option value="Proverb">Proverbs</option>
+              <option value="Idiom">Idioms</option>
+              <option value="Nursery Rhyme">Nursery Rhymes</option>
             </select>
           </div>
         </div>
       </div>
 
-      <div id="vf-arena">
-        <div id="vf-timer-wrap">
-          <svg id="vf-ring-svg" viewBox="0 0 120 120">
-            <circle id="vf-ring-bg" cx="60" cy="60" r="52" />
-            <circle id="vf-ring-fg" cx="60" cy="60" r="52" />
-          </svg>
-          <div id="vf-timer-text">
-            <span id="vf-time-num">60</span>
-            <span id="vf-time-label">sec</span>
-          </div>
-        </div>
-
-        <div id="vf-score-wrap">
-          <div class="vf-stat-big">
-            <span id="vf-unique-count">0</span>
-            <span class="vf-stat-label">unique</span>
-          </div>
-          <div class="vf-stat-row">
-            <span class="vf-stat-item"><span id="vf-repeat-count">0</span> <span class="vf-stat-label">repeated</span></span>
-            <span class="vf-stat-item"><span id="vf-intrusion-count">0</span> <span class="vf-stat-label">intrusions</span></span>
-          </div>
-        </div>
+      <div id="sc-card">
+        <div id="sc-cat-badge"></div>
+        <div id="sc-sentence"></div>
+        <div id="sc-progress"></div>
       </div>
 
       <div class="record-row">
-        <button class="record-btn idle" id="vf-btn" onclick="toggleGame()">
+        <button class="record-btn idle" id="sc-btn" onclick="toggleSC()">
           <span class="pulse-dot"></span>
-          <span id="vf-btn-label">Start</span>
+          <span id="sc-btn-label">Start Listening</span>
         </button>
-        <span id="vf-status"></span>
+        <button id="sc-skip-btn" class="hm-new-btn" onclick="scSkip()">Skip</button>
+        <span id="sc-status"></span>
       </div>
 
-      <div id="vf-word-area">
-        <div id="vf-chips"></div>
-        <div id="vf-last-heard"></div>
-        <div id="vf-intrusions-row" style="display:none">
-          <span class="vf-intrusion-label">Not matched:</span>
-          <span id="vf-intrusions-list"></span>
-        </div>
+      <div id="sc-result" style="display:none"></div>
+      <div id="sc-heard" style="display:none"></div>
+
+      <div id="sc-stats-row">
+        <span class="sc-stat"><span id="sc-score">0</span> correct</span>
+        <span class="sc-stat sc-stat-wrong"><span id="sc-wrong">0</span> wrong</span>
+        <span class="sc-stat sc-stat-skip"><span id="sc-skipped">0</span> skipped</span>
       </div>
 
-      <div id="vf-summary" style="display:none">
-        <div class="vf-summary-box">
-          <div class="vf-summary-title">Session complete</div>
-          <div id="vf-summary-body"></div>
-        </div>
+      <div id="sc-log" style="display:none">
+        <div class="sc-log-title">Session Log</div>
+        <table id="sc-log-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Sentence</th>
+              <th>Heard</th>
+              <th>Answer</th>
+              <th>Result</th>
+              <th>ms</th>
+            </tr>
+          </thead>
+          <tbody id="sc-log-body"></tbody>
+        </table>
       </div>
 
     </div><!-- /.task-main -->
@@ -103,6 +92,6 @@
   </div><!-- /.task-top -->
 </div><!-- /#task-screen -->
 
-<script src="/static/verbal-fluency.js"></script>
+<script src="/static/sentence-completion.js"></script>
 </body>
 </html>

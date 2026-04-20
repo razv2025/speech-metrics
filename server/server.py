@@ -878,6 +878,145 @@ async def hangman_guess(file: UploadFile = File(...)):
     return {'transcript': transcript}
 
 
+# ---------------------------------------------------------------------------
+# Sentence Completion — sentences, matching, endpoints
+# ---------------------------------------------------------------------------
+
+_SC_SENTENCES = [
+    # Proverbs
+    {'id':1,  'cat':'Proverb',       'text':"The ___ doesn't fall far from the tree.",              'answers':['apple']},
+    {'id':2,  'cat':'Proverb',       'text':"A ___ in time saves nine.",                            'answers':['stitch']},
+    {'id':3,  'cat':'Proverb',       'text':"Actions speak louder than ___.",                       'answers':['words']},
+    {'id':4,  'cat':'Proverb',       'text':"All that glitters is not ___.",                        'answers':['gold']},
+    {'id':5,  'cat':'Proverb',       'text':"Don't judge a book by its ___.",                       'answers':['cover']},
+    {'id':6,  'cat':'Proverb',       'text':"Every ___ has a silver lining.",                       'answers':['cloud']},
+    {'id':7,  'cat':'Proverb',       'text':"The early ___ catches the worm.",                      'answers':['bird']},
+    {'id':8,  'cat':'Proverb',       'text':"Better late than ___.",                                'answers':['never']},
+    {'id':9,  'cat':'Proverb',       'text':"A rolling ___ gathers no moss.",                       'answers':['stone']},
+    {'id':10, 'cat':'Proverb',       'text':"Don't bite the ___ that feeds you.",                   'answers':['hand']},
+    {'id':11, 'cat':'Proverb',       'text':"The ___ is always greener on the other side.",         'answers':['grass']},
+    {'id':12, 'cat':'Proverb',       'text':"Where there's smoke, there's ___.",                    'answers':['fire']},
+    {'id':13, 'cat':'Proverb',       'text':"Two wrongs don't make a ___.",                         'answers':['right']},
+    {'id':14, 'cat':'Proverb',       'text':"The pen is mightier than the ___.",                    'answers':['sword']},
+    {'id':15, 'cat':'Proverb',       'text':"Honesty is the best ___.",                             'answers':['policy']},
+    {'id':16, 'cat':'Proverb',       'text':"Absence makes the heart grow ___.",                    'answers':['fonder']},
+    {'id':17, 'cat':'Proverb',       'text':"Birds of a feather flock ___.",                        'answers':['together']},
+    {'id':18, 'cat':'Proverb',       'text':"Don't count your chickens before they ___.",           'answers':['hatch']},
+    {'id':19, 'cat':'Proverb',       'text':"A picture is worth a thousand ___.",                   'answers':['words']},
+    {'id':20, 'cat':'Proverb',       'text':"Curiosity killed the ___.",                            'answers':['cat']},
+    {'id':21, 'cat':'Proverb',       'text':"Every ___ has its day.",                               'answers':['dog']},
+    {'id':22, 'cat':'Proverb',       'text':"Fortune favors the ___.",                              'answers':['brave', 'bold']},
+    {'id':23, 'cat':'Proverb',       'text':"Laughter is the best ___.",                            'answers':['medicine']},
+    {'id':24, 'cat':'Proverb',       'text':"Look before you ___.",                                 'answers':['leap']},
+    {'id':25, 'cat':'Proverb',       'text':"Necessity is the mother of ___.",                      'answers':['invention']},
+    {'id':26, 'cat':'Proverb',       'text':"Practice makes ___.",                                  'answers':['perfect']},
+    {'id':27, 'cat':'Proverb',       'text':"Time flies when you're having ___.",                   'answers':['fun']},
+    {'id':28, 'cat':'Proverb',       'text':"United we stand, divided we ___.",                     'answers':['fall']},
+    {'id':29, 'cat':'Proverb',       'text':"When in Rome, do as the Romans ___.",                  'answers':['do']},
+    {'id':30, 'cat':'Proverb',       'text':"You can't make an omelette without breaking ___.",     'answers':['eggs']},
+    # Idioms
+    {'id':31, 'cat':'Idiom',         'text':"Break a ___!",                                         'answers':['leg']},
+    {'id':32, 'cat':'Idiom',         'text':"Bite the ___.",                                        'answers':['bullet']},
+    {'id':33, 'cat':'Idiom',         'text':"Beat around the ___.",                                 'answers':['bush']},
+    {'id':34, 'cat':'Idiom',         'text':"Spill the ___.",                                       'answers':['beans']},
+    {'id':35, 'cat':'Idiom',         'text':"Hit the nail on the ___.",                             'answers':['head']},
+    {'id':36, 'cat':'Idiom',         'text':"Kill two birds with one ___.",                         'answers':['stone']},
+    {'id':37, 'cat':'Idiom',         'text':"Let the cat out of the ___.",                          'answers':['bag']},
+    {'id':38, 'cat':'Idiom',         'text':"Once in a blue ___.",                                  'answers':['moon']},
+    {'id':39, 'cat':'Idiom',         'text':"Burn the midnight ___.",                               'answers':['oil']},
+    {'id':40, 'cat':'Idiom',         'text':"Cost an arm and a ___.",                               'answers':['leg']},
+    {'id':41, 'cat':'Idiom',         'text':"Kick the ___.",                                        'answers':['bucket']},
+    {'id':42, 'cat':'Idiom',         'text':"Miss the ___.",                                        'answers':['boat']},
+    {'id':43, 'cat':'Idiom',         'text':"Pull someone's ___.",                                  'answers':['leg']},
+    {'id':44, 'cat':'Idiom',         'text':"The tip of the ___.",                                  'answers':['iceberg']},
+    {'id':45, 'cat':'Idiom',         'text':"Wrap your ___ around it.",                             'answers':['head']},
+    {'id':46, 'cat':'Idiom',         'text':"Under the ___.",                                       'answers':['weather']},
+    {'id':47, 'cat':'Idiom',         'text':"Jump on the ___.",                                     'answers':['bandwagon']},
+    {'id':48, 'cat':'Idiom',         'text':"Hit the ___ running.",                                 'answers':['ground']},
+    {'id':49, 'cat':'Idiom',         'text':"Steal someone's ___.",                                 'answers':['thunder']},
+    {'id':50, 'cat':'Idiom',         'text':"On the tip of my ___.",                                'answers':['tongue']},
+    {'id':51, 'cat':'Idiom',         'text':"The ___ is in your court.",                            'answers':['ball']},
+    {'id':52, 'cat':'Idiom',         'text':"Add fuel to the ___.",                                 'answers':['fire']},
+    {'id':53, 'cat':'Idiom',         'text':"Bite off more than you can ___.",                      'answers':['chew']},
+    {'id':54, 'cat':'Idiom',         'text':"The ___ of the storm.",                                'answers':['eye']},
+    {'id':55, 'cat':'Idiom',         'text':"Hit the ___ (go to sleep).",                           'answers':['sack', 'hay']},
+    # Nursery Rhymes
+    {'id':56, 'cat':'Nursery Rhyme', 'text':"Jack and Jill went up the ___.",                       'answers':['hill']},
+    {'id':57, 'cat':'Nursery Rhyme', 'text':"Humpty Dumpty sat on a ___.",                          'answers':['wall']},
+    {'id':58, 'cat':'Nursery Rhyme', 'text':"Twinkle, twinkle, little ___.",                        'answers':['star']},
+    {'id':59, 'cat':'Nursery Rhyme', 'text':"Mary had a little ___.",                               'answers':['lamb']},
+    {'id':60, 'cat':'Nursery Rhyme', 'text':"Baa, baa, black ___, have you any wool?",              'answers':['sheep']},
+    {'id':61, 'cat':'Nursery Rhyme', 'text':"Little Bo Peep has lost her ___.",                     'answers':['sheep']},
+    {'id':62, 'cat':'Nursery Rhyme', 'text':"Old MacDonald had a ___.",                             'answers':['farm']},
+    {'id':63, 'cat':'Nursery Rhyme', 'text':"Row, row, row your ___.",                              'answers':['boat']},
+    {'id':64, 'cat':'Nursery Rhyme', 'text':"Hickory dickory dock, the mouse ran up the ___.",      'answers':['clock']},
+    {'id':65, 'cat':'Nursery Rhyme', 'text':"London Bridge is falling ___.",                        'answers':['down']},
+    {'id':66, 'cat':'Nursery Rhyme', 'text':"Ring around the ___.",                                 'answers':['rosie', 'rosy']},
+    {'id':67, 'cat':'Nursery Rhyme', 'text':"Jack be nimble, Jack be ___.",                         'answers':['quick']},
+    {'id':68, 'cat':'Nursery Rhyme', 'text':"Little Miss Muffet sat on a ___.",                     'answers':['tuffet']},
+    {'id':69, 'cat':'Nursery Rhyme', 'text':"Georgie Porgie, pudding and ___.",                     'answers':['pie']},
+    {'id':70, 'cat':'Nursery Rhyme', 'text':"This little piggy went to ___.",                       'answers':['market']},
+    {'id':71, 'cat':'Nursery Rhyme', 'text':"The itsy bitsy spider climbed up the water ___.",      'answers':['spout']},
+    {'id':72, 'cat':'Nursery Rhyme', 'text':"The wheels on the bus go round and ___.",              'answers':['round']},
+    {'id':73, 'cat':'Nursery Rhyme', 'text':"Head, shoulders, knees and ___.",                      'answers':['toes']},
+    {'id':74, 'cat':'Nursery Rhyme', 'text':"One, two, buckle my ___.",                             'answers':['shoe']},
+    {'id':75, 'cat':'Nursery Rhyme', 'text':"Three blind ___.",                                     'answers':['mice']},
+    {'id':76, 'cat':'Nursery Rhyme', 'text':"I'm a little teapot, short and ___.",                  'answers':['stout']},
+    {'id':77, 'cat':'Nursery Rhyme', 'text':"Five little ducks went out one ___.",                  'answers':['day']},
+    {'id':78, 'cat':'Nursery Rhyme', 'text':"Pat-a-cake, pat-a-cake, baker's ___.",                 'answers':['man']},
+    {'id':79, 'cat':'Nursery Rhyme', 'text':"Rock-a-bye baby, on the treetop, when the wind blows the cradle will ___.", 'answers':['rock']},
+    {'id':80, 'cat':'Nursery Rhyme', 'text':"Pease porridge hot, pease porridge ___.",              'answers':['cold']},
+]
+
+
+def _sc_check_answer(transcript: str, answers: list) -> bool:
+    raw = re.sub(r"[^\w\s']", ' ', transcript.lower()).strip()
+    tokens = raw.split()
+    for answer in answers:
+        norm_ans = answer.lower().strip()
+        ans_toks = norm_ans.split()
+        if len(ans_toks) == 1:
+            for tok in tokens:
+                if tok == norm_ans:
+                    return True
+                if difflib.SequenceMatcher(None, tok, norm_ans).ratio() >= 0.80:
+                    return True
+        else:
+            for i in range(len(tokens) - len(ans_toks) + 1):
+                phrase = ' '.join(tokens[i:i + len(ans_toks)])
+                if difflib.SequenceMatcher(None, phrase, norm_ans).ratio() >= 0.85:
+                    return True
+    return False
+
+
+@app.get('/sentence-completion')
+def serve_sentence_completion():
+    return _html('sentence-completion.html')
+
+
+@app.get('/sentence-completion/sentences')
+def sc_get_sentences():
+    return [{'id': s['id'], 'cat': s['cat'], 'text': s['text']} for s in _SC_SENTENCES]
+
+
+@app.post('/sentence-completion/check')
+async def sc_check(file: UploadFile = File(...), sentence_id: int = Form(...)):
+    audio_bytes = await file.read()
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+        f.write(audio_bytes)
+        tmp_path = f.name
+    try:
+        segs, _ = get_whisper().transcribe(tmp_path, language='en', beam_size=1)
+        transcript = ' '.join(s.text for s in segs).strip()
+    finally:
+        os.unlink(tmp_path)
+    sentence = next((s for s in _SC_SENTENCES if s['id'] == sentence_id), None)
+    if not sentence:
+        raise HTTPException(status_code=404, detail='Unknown sentence')
+    correct = _sc_check_answer(transcript, sentence['answers'])
+    return {'transcript': transcript, 'correct': correct, 'canonical': sentence['answers'][0]}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
