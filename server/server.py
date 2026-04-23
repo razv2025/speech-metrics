@@ -40,6 +40,15 @@ from scipy.spatial import ConvexHull
 import parselmouth
 from parselmouth.praat import call
 
+from llm_sentences import (
+    CATEGORIES as LLM_CATEGORIES,
+    check_answer_llm,
+    get_sentences as llm_get_sentences,
+    get_pool_status,
+    is_llm_available,
+    prefill_async,
+)
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
@@ -994,9 +1003,61 @@ def serve_sentence_completion():
     return _html('sentence-completion.html')
 
 
+# In-memory store for active LLM-generated sentences (keyed by id)
+_sc_active: dict[int, dict] = {}
+_sc_active_lock = __import__('threading').Lock()
+
+
+@app.get('/sentence-completion/categories')
+def sc_get_categories():
+    """Return available categories, including LLM-generated ones."""
+    llm_ok = is_llm_available()
+    cats = []
+    for key, desc in LLM_CATEGORIES.items():
+        cats.append({
+            'key': key,
+            'label': key,
+            'description': desc,
+            'llm': True,
+        })
+    return {'categories': cats, 'llm_available': llm_ok}
+
+
 @app.get('/sentence-completion/sentences')
-def sc_get_sentences():
-    return [{'id': s['id'], 'cat': s['cat'], 'text': s['text']} for s in _SC_SENTENCES]
+def sc_get_sentences(category: str = 'all', count: int = 15):
+    """
+    Return sentences — LLM-generated when available, hardcoded fallback otherwise.
+    The 'category' param can be a specific category or 'all'.
+    """
+    llm_ok = is_llm_available()
+
+    # Try LLM pool first
+    if llm_ok:
+        cat = category if category != 'all' else None
+        sentences = llm_get_sentences(cat, count)
+        if sentences:
+            # Register in active store for answer checking
+            with _sc_active_lock:
+                for s in sentences:
+                    _sc_active[s['id']] = s
+            return [{'id': s['id'], 'cat': s['cat'], 'text': s['text'],
+                     'llm': s.get('llm_generated', False)} for s in sentences]
+
+    # Fallback to hardcoded list
+    pool = _SC_SENTENCES
+    if category and category != 'all':
+        pool = [s for s in pool if s['cat'] == category]
+    import random as _rand
+    pool = list(pool)
+    _rand.shuffle(pool)
+    return [{'id': s['id'], 'cat': s['cat'], 'text': s['text'], 'llm': False}
+            for s in pool[:count]]
+
+
+@app.get('/sentence-completion/pool-status')
+def sc_pool_status():
+    """Debug endpoint — show how many sentences are in each LLM pool."""
+    return {'llm_available': is_llm_available(), 'pools': get_pool_status()}
 
 
 @app.post('/sentence-completion/check')
@@ -1010,11 +1071,44 @@ async def sc_check(file: UploadFile = File(...), sentence_id: int = Form(...)):
         transcript = ' '.join(s.text for s in segs).strip()
     finally:
         os.unlink(tmp_path)
-    sentence = next((s for s in _SC_SENTENCES if s['id'] == sentence_id), None)
+
+    # Look up sentence — first in active LLM store, then hardcoded
+    sentence = None
+    with _sc_active_lock:
+        sentence = _sc_active.get(sentence_id)
+    if not sentence:
+        sentence = next((s for s in _SC_SENTENCES if s['id'] == sentence_id), None)
     if not sentence:
         raise HTTPException(status_code=404, detail='Unknown sentence')
+
+    canonical = sentence['answers'][0]
+    is_llm_sentence = sentence.get('llm_generated', False)
+
+    # Try LLM semantic validation first, fall back to difflib
+    llm_result = None
+    if is_llm_sentence or is_llm_available():
+        llm_result = check_answer_llm(sentence['text'], transcript, canonical)
+
+    if llm_result is not None:
+        return {
+            'transcript': transcript,
+            'correct': llm_result['correct'],
+            'canonical': canonical,
+            'closeness': llm_result.get('closeness', ''),
+            'explanation': llm_result.get('explanation', ''),
+            'llm_validated': True,
+        }
+
+    # Fallback to fuzzy matching if LLM validation failed or unavailable
     correct = _sc_check_answer(transcript, sentence['answers'])
-    return {'transcript': transcript, 'correct': correct, 'canonical': sentence['answers'][0]}
+    return {
+        'transcript': transcript,
+        'correct': correct,
+        'canonical': canonical,
+        'closeness': 'exact' if correct else 'wrong',
+        'explanation': '',
+        'llm_validated': False,
+    }
 
 
 @app.get("/health")
@@ -1094,6 +1188,8 @@ if __name__ == "__main__":
     import uvicorn
     # Pre-load Whisper at startup so the first request isn't slow
     get_whisper()
+    # Pre-fill LLM sentence pools in background
+    prefill_async()
     port = int(os.environ.get("PORT", 8765))
     _dir = os.path.dirname(__file__)
     ssl_keyfile  = os.path.join(_dir, "key.pem")

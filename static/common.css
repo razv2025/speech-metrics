@@ -1049,3 +1049,92 @@ body.drag-over::after {
 .sc-log-skip td,#sc-log-table tr.sc-log-skip td { color: #555c75; }
 .sc-log-res { text-align: center; font-size: 1rem; }
 .sc-log-ms  { text-align: right; color: #3d4566; }
+
+/* ── LLM badge ── */
+.sc-llm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sc-llm-on {
+  background: rgba(168,124,248,0.15);
+  border: 1px solid rgba(168,124,248,0.4);
+  color: #b88cff;
+}
+.sc-llm-off {
+  background: rgba(124,158,248,0.1);
+  border: 1px solid rgba(124,158,248,0.25);
+  color: #7c9ef8;
+}
+.sc-llm-icon {
+  color: #b88cff;
+  font-size: 0.8em;
+}
+/* ── Explanation box ── */
+#sc-explanation {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(124,158,248,0.08);
+  border: 1px solid rgba(124,158,248,0.2);
+  color: #c8cedf;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.sc-expl-icon {
+  margin-right: 6px;
+}
+
+/* ── Closeness badges ── */
+.sc-closeness-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.sc-close-exact   { background: rgba(92,184,92,0.15); color: #5cb85c; }
+.sc-close-synonym { background: rgba(92,168,248,0.15); color: #5ca8f8; }
+.sc-close-close   { background: rgba(224,168,92,0.15); color: #e0a85c; }
+.sc-close-wrong   { background: rgba(224,92,92,0.15); color: #e05c5c; }
+
+.sc-result-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sc-result-icon {
+  font-size: 1.1em;
+  margin-right: 4px;
+}
+
+/* "Close" result banner (amber) */
+.sc-result-close {
+  background: rgba(224,168,92,0.12);
+  border: 1px solid rgba(224,168,92,0.3);
+  color: #e0a85c;
+}
+
+/* "Close" blank state (amber underline) */
+.sc-blank-close {
+  color: #e0a85c;
+  border-bottom-color: #e0a85c;
+  animation: none;
+}
+
+/* New LLM category badges */
+.sc-cat-science     { background: rgba(92,184,92,0.12); border: 1px solid rgba(92,184,92,0.3); color: #5cb85c; }
+.sc-cat-geography   { background: rgba(92,168,184,0.12); border: 1px solid rgba(92,168,184,0.3); color: #5ca8b8; }
+.sc-cat-history     { background: rgba(184,156,92,0.12); border: 1px solid rgba(184,156,92,0.3); color: #b89c5c; }
+.sc-cat-pop-culture { background: rgba(224,124,168,0.12); border: 1px solid rgba(224,124,168,0.3); color: #e07ca8; }

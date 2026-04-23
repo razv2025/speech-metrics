@@ -16,8 +16,9 @@
       <div class="task-header">
         <div class="task-title-block">
           <h2>Sentence Completion</h2>
-          <p>Say the missing word to complete the proverb, idiom, or nursery rhyme.</p>
+          <p>Say the missing word to complete the sentence.</p>
         </div>
+        <span class="sc-llm-badge sc-llm-off" id="sc-llm-badge" title="Loading…">…</span>
       </div>
 
       <div id="sc-setup">
@@ -26,9 +27,7 @@
             <label class="vf-label">Category</label>
             <select id="sc-category" class="vf-select" onchange="onSCCategoryChange()">
               <option value="all">All</option>
-              <option value="Proverb">Proverbs</option>
-              <option value="Idiom">Idioms</option>
-              <option value="Nursery Rhyme">Nursery Rhymes</option>
+              <!-- populated dynamically from server -->
             </select>
           </div>
         </div>
@@ -50,6 +49,7 @@
       </div>
 
       <div id="sc-result" style="display:none"></div>
+      <div id="sc-explanation" style="display:none"></div>
       <div id="sc-heard" style="display:none"></div>
 
       <div id="sc-stats-row">
