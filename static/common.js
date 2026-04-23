@@ -2229,7 +2229,7 @@ async function deleteSelected(task) {
 
   for (const pubId of pubIds) {
     try {
-      await fetch(`${SERVER_URL}/published/${pubId}`, { method: 'DELETE' });
+      await fetch(`${SERVER_URL}/published/${pubId}?user_id=${encodeURIComponent(_getUserId())}`, { method: 'DELETE' });
       _publishedEntries[task] = _publishedEntries[task].filter(e => e.id !== pubId);
     } catch (err) {
       console.error('Delete published failed:', err);

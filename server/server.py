@@ -24,14 +24,16 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-# Allow Whisper model download through corporate proxies with self-signed certs.
-# This only affects the one-time model download; no external data is sent.
-ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+_ALLOW_INSECURE_MODEL_DOWNLOADS = os.environ.get('ALLOW_INSECURE_MODEL_DOWNLOADS') == '1'
+if _ALLOW_INSECURE_MODEL_DOWNLOADS:
+    print('WARNING: TLS verification disabled for outbound model downloads')
+    ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Optional, Tuple
 import boto3
 from botocore.exceptions import ClientError
 from scipy.fft import fft, ifft
@@ -62,13 +64,21 @@ try:
 except Exception:
     _GIT_VERSION = 'unknown'
 
+
+def _allowed_origins_from_env() -> list[str]:
+    raw = os.environ.get('ALLOWED_ORIGINS', '')
+    return [origin.strip().rstrip('/') for origin in raw.split(',') if origin.strip()]
+
+
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_ALLOWED_ORIGINS = _allowed_origins_from_env()
+if _ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_ALLOWED_ORIGINS,
+        allow_methods=['GET', 'POST', 'DELETE'],
+        allow_headers=['Authorization', 'Content-Type'],
+    )
 
 _STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -91,15 +101,32 @@ if not _APP_PASSWORD:
     print("WARNING: APP_PASSWORD env var not set — all requests will be rejected")
 
 
-def _check_auth(authorization: str) -> bool:
+def _decode_basic_auth(authorization: str) -> Optional[Tuple[str, str]]:
     if not authorization.startswith("Basic "):
-        return False
+        return None
     try:
         decoded = base64.b64decode(authorization[6:]).decode("utf-8", errors="replace")
-        _, password = decoded.split(":", 1)
-        return secrets.compare_digest(password.encode("utf-8"), _APP_PASSWORD.encode("utf-8"))
+        username, password = decoded.split(":", 1)
+        return username, password
     except Exception:
+        return None
+
+
+def _sanitize_username(username: str) -> str:
+    return ''.join(c for c in username if 32 <= ord(c) < 127)[:40].strip()
+
+
+def _request_username(request: Request) -> str:
+    creds = _decode_basic_auth(request.headers.get("Authorization", ""))
+    return _sanitize_username(creds[0]) if creds else ""
+
+
+def _check_auth(authorization: str) -> bool:
+    creds = _decode_basic_auth(authorization)
+    if not creds:
         return False
+    _, password = creds
+    return secrets.compare_digest(password.encode("utf-8"), _APP_PASSWORD.encode("utf-8"))
 
 
 @app.middleware("http")
@@ -617,13 +644,14 @@ _TASK_SLUGS = {'sustained-phonation': 1, 'pitch-glides': 2, 'reading-passage': 3
 
 
 @app.post('/publish/{task_slug}')
-async def publish_entry(task_slug: str, file: UploadFile = File(...), metadata: str = Form(...)):
+async def publish_entry(task_slug: str, request: Request, file: UploadFile = File(...), metadata: str = Form(...)):
     task_n = _TASK_SLUGS.get(task_slug)
     if task_n is None:
         raise HTTPException(status_code=404, detail='Unknown task')
     data    = json.loads(metadata)
     audio   = await file.read()
     s3_key  = f'{_S3_PREFIX}{task_slug}/{_uuid_mod.uuid4()}.wav'
+    owner_username = _request_username(request) or _sanitize_username(str(data.get('username') or ''))
     _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
     now = datetime.now(timezone.utc).isoformat()
     with _db() as conn:
@@ -631,7 +659,7 @@ async def publish_entry(task_slug: str, file: UploadFile = File(...), metadata: 
             'INSERT INTO published '
             '(task,user_id,username,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
             'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            (task_n, data.get('user_id'), data.get('username'), data.get('filename'), now, s3_key,
+            (task_n, data.get('user_id'), owner_username or None, data.get('filename'), now, s3_key,
              json.dumps(data.get('metrics', {})), data.get('reference_text'),
              data.get('audio_sr'), data.get('duration_s'), data.get('version')),
         )
@@ -659,11 +687,18 @@ def get_published(task_slug: str):
 
 
 @app.delete('/published/{entry_id}')
-def delete_published(entry_id: int):
+def delete_published(entry_id: int, request: Request, user_id: Optional[str] = None):
+    request_username = _request_username(request)
     with _db() as conn:
-        row = conn.execute('SELECT s3_key FROM published WHERE id=?', (entry_id,)).fetchone()
+        row = conn.execute('SELECT s3_key, username, user_id FROM published WHERE id=?', (entry_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail='Not found')
+        owner_username = _sanitize_username(row['username'] or '')
+        if owner_username and request_username:
+            if request_username != owner_username:
+                raise HTTPException(status_code=403, detail='Forbidden')
+        elif not row['user_id'] or user_id != row['user_id']:
+            raise HTTPException(status_code=403, detail='Forbidden')
         try:
             _get_s3().delete_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
         except Exception as exc:
@@ -1118,16 +1153,7 @@ def health():
 
 @app.get("/me")
 def get_me(request: Request):
-    auth = request.headers.get("Authorization", "")
-    username = ""
-    if auth.startswith("Basic "):
-        try:
-            decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="replace")
-            username = decoded.split(":", 1)[0]
-        except Exception:
-            pass
-    # Sanitize: printable ASCII only, max 40 chars, strip whitespace
-    username = ''.join(c for c in username if 32 <= ord(c) < 127)[:40].strip()
+    username = _request_username(request)
     return {"username": username or "User"}
 
 

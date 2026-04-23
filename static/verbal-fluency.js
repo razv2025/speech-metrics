@@ -1,6 +1,6 @@
 'use strict';
 
-const VF_SERVER = 'https://98.87.120.209:8765';
+const VF_SERVER = ''; // relative - same origin
 
 // ── Categories ────────────────────────────────────────────────────────────────
 

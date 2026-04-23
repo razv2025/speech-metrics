@@ -1,6 +1,6 @@
 /* ── Hangman game ── */
 
-const SERVER_URL = 'https://98.87.120.209:8765';
+const SERVER_URL = ''; // relative - same origin
 
 const WORDS = [
   'APPLE','BEACH','BLACK','BRAVE','BREAD','BREAK','BRING','BROWN',

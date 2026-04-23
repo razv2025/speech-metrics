@@ -16,8 +16,9 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 
-# Allow corporate-proxy SSL for any lazy model fetches
-ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+if os.environ.get('ALLOW_INSECURE_MODEL_DOWNLOADS') == '1':
+    print('WARNING: TLS verification disabled for outbound model downloads')
+    ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
 
 # ---------------------------------------------------------------------------
 # Paths
