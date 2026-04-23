@@ -11,34 +11,42 @@ Endpoints:
 import os
 import re
 import ssl
-import base64
 import difflib
-import secrets
 import tempfile
-import traceback
 import json
-import sqlite3
-import uuid as _uuid_mod
-import urllib.request
-from datetime import datetime, timezone
 
 import numpy as np
 
-# Allow Whisper model download through corporate proxies with self-signed certs.
-# This only affects the one-time model download; no external data is sent.
-ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+from server_auth import register_basic_auth, request_username, sanitize_username
+from server_logging import configure_logging, register_request_logging
+from server_publish import PublishStore, create_publish_router
+
+log = configure_logging('speech_metrics.server')
+
+_ALLOW_INSECURE_MODEL_DOWNLOADS = os.environ.get('ALLOW_INSECURE_MODEL_DOWNLOADS') == '1'
+if _ALLOW_INSECURE_MODEL_DOWNLOADS:
+    log.warning('TLS verification disabled for outbound model downloads')
+    ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-import boto3
-from botocore.exceptions import ClientError
 from scipy.fft import fft, ifft
 from scipy.spatial import ConvexHull
 
 import parselmouth
 from parselmouth.praat import call
+
+from llm_sentences import (
+    CATEGORIES as LLM_CATEGORIES,
+    check_answer_llm,
+    get_sentences as llm_get_sentences,
+    get_pool_status,
+    is_llm_available,
+    prefill_async,
+)
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -53,13 +61,21 @@ try:
 except Exception:
     _GIT_VERSION = 'unknown'
 
+
+def _allowed_origins_from_env() -> list[str]:
+    raw = os.environ.get('ALLOWED_ORIGINS', '')
+    return [origin.strip().rstrip('/') for origin in raw.split(',') if origin.strip()]
+
+
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_ALLOWED_ORIGINS = _allowed_origins_from_env()
+if _ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_ALLOWED_ORIGINS,
+        allow_methods=['GET', 'POST', 'DELETE'],
+        allow_headers=['Authorization', 'Content-Type'],
+    )
 
 _STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -79,111 +95,26 @@ async def no_cache_static(request, call_next):
 # ---------------------------------------------------------------------------
 _APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 if not _APP_PASSWORD:
-    print("WARNING: APP_PASSWORD env var not set — all requests will be rejected")
+    log.warning("APP_PASSWORD env var not set - all requests will be rejected")
 
-
-def _check_auth(authorization: str) -> bool:
-    if not authorization.startswith("Basic "):
-        return False
-    try:
-        decoded = base64.b64decode(authorization[6:]).decode("utf-8", errors="replace")
-        _, password = decoded.split(":", 1)
-        return secrets.compare_digest(password.encode("utf-8"), _APP_PASSWORD.encode("utf-8"))
-    except Exception:
-        return False
-
-
-@app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    if request.url.path == "/health":
-        return await call_next(request)
-    if _APP_PASSWORD and _check_auth(request.headers.get("Authorization", "")):
-        return await call_next(request)
-    return Response(
-        status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Speech Assessment"'},
-        content="Unauthorized",
-    )
+register_basic_auth(app, lambda: _APP_PASSWORD)
+register_request_logging(app, log)
 
 
 # ---------------------------------------------------------------------------
 # Publish infrastructure — S3 + SQLite
 # ---------------------------------------------------------------------------
-def _detect_aws_region() -> str:
-    try:
-        token = urllib.request.urlopen(
-            urllib.request.Request(
-                'http://169.254.169.254/latest/api/token', method='PUT',
-                headers={'X-aws-ec2-metadata-token-ttl-seconds': '10'},
-            ), timeout=1,
-        ).read().decode()
-        req = urllib.request.Request(
-            'http://169.254.169.254/latest/meta-data/placement/region',
-            headers={'X-aws-ec2-metadata-token': token},
-        )
-        return urllib.request.urlopen(req, timeout=1).read().decode()
-    except Exception:
-        return boto3.session.Session().region_name or 'us-east-1'
-
-
-_AWS_REGION = _detect_aws_region()
-_S3_BUCKET  = 'speech-metrics-storage'
-_S3_PREFIX  = 'public-samples/'
-_s3_client  = None
-
-
-def _get_s3():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client('s3', region_name=_AWS_REGION)
-    return _s3_client
-
-
-def _init_s3():
-    print(f'S3 configured: {_S3_BUCKET}/{_S3_PREFIX}')
-
-
 _DB_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'published.db')
-
-
-def _db():
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _init_db():
-    with _db() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS published (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                task           INTEGER NOT NULL,
-                user_id        TEXT,
-                username       TEXT,
-                filename       TEXT,
-                published_at   TEXT NOT NULL,
-                s3_key         TEXT NOT NULL,
-                metrics        TEXT,
-                reference_text TEXT,
-                audio_sr       INTEGER,
-                duration_s     REAL,
-                version        TEXT
-            )
-        ''')
-        # Migrate existing table (column added after initial deploy)
-        try:
-            conn.execute('ALTER TABLE published ADD COLUMN username TEXT')
-        except Exception:
-            pass
-        conn.commit()
+_publish_store = PublishStore(db_path=_DB_PATH, logger=log)
 
 
 # Initialise on import (runs whether started via __main__ or uvicorn)
 try:
-    _init_db()
-    _init_s3()
+    _publish_store.init()
 except Exception as _pub_init_err:
-    print(f'WARNING: publish infrastructure unavailable: {_pub_init_err}')
+    log.warning('publish infrastructure unavailable: %s', _pub_init_err)
+
+app.include_router(create_publish_router(_publish_store, request_username, sanitize_username))
 
 # Whisper loaded lazily on first Task-3 request to avoid delaying startup
 _whisper_model = None
@@ -193,9 +124,9 @@ def get_whisper():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
-        print("Loading Whisper base model (one-time) …", flush=True)
+        log.info('Loading Whisper base model (one-time)')
         _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
-        print("Whisper ready.", flush=True)
+        log.info('Whisper ready')
     return _whisper_model
 
 
@@ -550,7 +481,7 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
             ]
             avg_pause_s = float(np.mean(pauses)) if pauses else 0.0
     except Exception:
-        traceback.print_exc()
+        log.exception('reading_passage_transcription_failed')
 
     return {
         "f0_mean_hz":        f0_mean,
@@ -599,88 +530,7 @@ def compute_articulation(transcript: str, reference: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Publish endpoints
-# ---------------------------------------------------------------------------
-_TASK_SLUGS = {'sustained-phonation': 1, 'pitch-glides': 2, 'reading-passage': 3}
-
-
-@app.post('/publish/{task_slug}')
-async def publish_entry(task_slug: str, file: UploadFile = File(...), metadata: str = Form(...)):
-    task_n = _TASK_SLUGS.get(task_slug)
-    if task_n is None:
-        raise HTTPException(status_code=404, detail='Unknown task')
-    data    = json.loads(metadata)
-    audio   = await file.read()
-    s3_key  = f'{_S3_PREFIX}{task_slug}/{_uuid_mod.uuid4()}.wav'
-    _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
-    now = datetime.now(timezone.utc).isoformat()
-    with _db() as conn:
-        cur = conn.execute(
-            'INSERT INTO published '
-            '(task,user_id,username,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            (task_n, data.get('user_id'), data.get('username'), data.get('filename'), now, s3_key,
-             json.dumps(data.get('metrics', {})), data.get('reference_text'),
-             data.get('audio_sr'), data.get('duration_s'), data.get('version')),
-        )
-        conn.commit()
-        entry_id = cur.lastrowid
-    return {'id': entry_id, 'published_at': now}
-
-
-@app.get('/published/{task_slug}')
-def get_published(task_slug: str):
-    task_n = _TASK_SLUGS.get(task_slug)
-    if task_n is None:
-        raise HTTPException(status_code=404, detail='Unknown task')
-    with _db() as conn:
-        rows = conn.execute(
-            'SELECT id,task,user_id,username,filename,published_at,metrics,audio_sr,duration_s,version '
-            'FROM published WHERE task=? ORDER BY published_at DESC', (task_n,),
-        ).fetchall()
-    result = []
-    for r in rows:
-        e = dict(r)
-        e['metrics'] = json.loads(e['metrics'] or '{}')
-        result.append(e)
-    return result
-
-
-@app.delete('/published/{entry_id}')
-def delete_published(entry_id: int):
-    with _db() as conn:
-        row = conn.execute('SELECT s3_key FROM published WHERE id=?', (entry_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail='Not found')
-        try:
-            _get_s3().delete_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
-        except Exception as exc:
-            print(f'S3 delete warning: {exc}')
-        conn.execute('DELETE FROM published WHERE id=?', (entry_id,))
-        conn.commit()
-    return {'ok': True}
-
-
-@app.get('/audio/{entry_id}')
-def stream_audio(entry_id: int):
-    with _db() as conn:
-        row = conn.execute('SELECT s3_key, filename FROM published WHERE id=?', (entry_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail='Not found')
-    obj  = _get_s3().get_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
-    fname = (row['filename'] or 'recording').rstrip('.zip') + '.wav'
-    return StreamingResponse(
-        obj['Body'],
-        media_type='audio/wav',
-        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
-    )
-
-
-# ---------------------------------------------------------------------------
-# Verbal Fluency — word lists, matching, endpoints
+# Verbal Fluency - word lists, matching, endpoints
 # ---------------------------------------------------------------------------
 
 _VF_WORD_LISTS = {
@@ -994,9 +844,61 @@ def serve_sentence_completion():
     return _html('sentence-completion.html')
 
 
+# In-memory store for active LLM-generated sentences (keyed by id)
+_sc_active: dict[int, dict] = {}
+_sc_active_lock = __import__('threading').Lock()
+
+
+@app.get('/sentence-completion/categories')
+def sc_get_categories():
+    """Return available categories, including LLM-generated ones."""
+    llm_ok = is_llm_available()
+    cats = []
+    for key, desc in LLM_CATEGORIES.items():
+        cats.append({
+            'key': key,
+            'label': key,
+            'description': desc,
+            'llm': True,
+        })
+    return {'categories': cats, 'llm_available': llm_ok}
+
+
 @app.get('/sentence-completion/sentences')
-def sc_get_sentences():
-    return [{'id': s['id'], 'cat': s['cat'], 'text': s['text']} for s in _SC_SENTENCES]
+def sc_get_sentences(category: str = 'all', count: int = 15):
+    """
+    Return sentences — LLM-generated when available, hardcoded fallback otherwise.
+    The 'category' param can be a specific category or 'all'.
+    """
+    llm_ok = is_llm_available()
+
+    # Try LLM pool first
+    if llm_ok:
+        cat = category if category != 'all' else None
+        sentences = llm_get_sentences(cat, count)
+        if sentences:
+            # Register in active store for answer checking
+            with _sc_active_lock:
+                for s in sentences:
+                    _sc_active[s['id']] = s
+            return [{'id': s['id'], 'cat': s['cat'], 'text': s['text'],
+                     'llm': s.get('llm_generated', False)} for s in sentences]
+
+    # Fallback to hardcoded list
+    pool = _SC_SENTENCES
+    if category and category != 'all':
+        pool = [s for s in pool if s['cat'] == category]
+    import random as _rand
+    pool = list(pool)
+    _rand.shuffle(pool)
+    return [{'id': s['id'], 'cat': s['cat'], 'text': s['text'], 'llm': False}
+            for s in pool[:count]]
+
+
+@app.get('/sentence-completion/pool-status')
+def sc_pool_status():
+    """Debug endpoint — show how many sentences are in each LLM pool."""
+    return {'llm_available': is_llm_available(), 'pools': get_pool_status()}
 
 
 @app.post('/sentence-completion/check')
@@ -1010,11 +912,44 @@ async def sc_check(file: UploadFile = File(...), sentence_id: int = Form(...)):
         transcript = ' '.join(s.text for s in segs).strip()
     finally:
         os.unlink(tmp_path)
-    sentence = next((s for s in _SC_SENTENCES if s['id'] == sentence_id), None)
+
+    # Look up sentence — first in active LLM store, then hardcoded
+    sentence = None
+    with _sc_active_lock:
+        sentence = _sc_active.get(sentence_id)
+    if not sentence:
+        sentence = next((s for s in _SC_SENTENCES if s['id'] == sentence_id), None)
     if not sentence:
         raise HTTPException(status_code=404, detail='Unknown sentence')
+
+    canonical = sentence['answers'][0]
+    is_llm_sentence = sentence.get('llm_generated', False)
+
+    # Try LLM semantic validation first, fall back to difflib
+    llm_result = None
+    if is_llm_sentence or is_llm_available():
+        llm_result = check_answer_llm(sentence['text'], transcript, canonical)
+
+    if llm_result is not None:
+        return {
+            'transcript': transcript,
+            'correct': llm_result['correct'],
+            'canonical': canonical,
+            'closeness': llm_result.get('closeness', ''),
+            'explanation': llm_result.get('explanation', ''),
+            'llm_validated': True,
+        }
+
+    # Fallback to fuzzy matching if LLM validation failed or unavailable
     correct = _sc_check_answer(transcript, sentence['answers'])
-    return {'transcript': transcript, 'correct': correct, 'canonical': sentence['answers'][0]}
+    return {
+        'transcript': transcript,
+        'correct': correct,
+        'canonical': canonical,
+        'closeness': 'exact' if correct else 'wrong',
+        'explanation': '',
+        'llm_validated': False,
+    }
 
 
 @app.get("/health")
@@ -1024,16 +959,7 @@ def health():
 
 @app.get("/me")
 def get_me(request: Request):
-    auth = request.headers.get("Authorization", "")
-    username = ""
-    if auth.startswith("Basic "):
-        try:
-            decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="replace")
-            username = decoded.split(":", 1)[0]
-        except Exception:
-            pass
-    # Sanitize: printable ASCII only, max 40 chars, strip whitespace
-    username = ''.join(c for c in username if 32 <= ord(c) < 127)[:40].strip()
+    username = request_username(request)
     return {"username": username or "User"}
 
 
@@ -1094,13 +1020,16 @@ if __name__ == "__main__":
     import uvicorn
     # Pre-load Whisper at startup so the first request isn't slow
     get_whisper()
+    # Pre-fill LLM sentence pools in background
+    prefill_async()
     port = int(os.environ.get("PORT", 8765))
     _dir = os.path.dirname(__file__)
     ssl_keyfile  = os.path.join(_dir, "key.pem")
     ssl_certfile = os.path.join(_dir, "cert.pem")
     use_ssl = os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile)
     proto = "https" if use_ssl else "http"
-    print(f"Starting speech metrics server on {proto}://0.0.0.0:{port}")
+    log.info("Starting speech metrics server on %s://0.0.0.0:%s", proto, port)
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info",
                 ssl_keyfile=ssl_keyfile  if use_ssl else None,
                 ssl_certfile=ssl_certfile if use_ssl else None)
+

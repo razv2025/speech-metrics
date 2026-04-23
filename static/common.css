@@ -1049,3 +1049,231 @@ body.drag-over::after {
 .sc-log-skip td,#sc-log-table tr.sc-log-skip td { color: #555c75; }
 .sc-log-res { text-align: center; font-size: 1rem; }
 .sc-log-ms  { text-align: right; color: #3d4566; }
+
+/* ── LLM badge ── */
+.sc-llm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sc-llm-on {
+  background: rgba(168,124,248,0.15);
+  border: 1px solid rgba(168,124,248,0.4);
+  color: #b88cff;
+}
+.sc-llm-off {
+  background: rgba(124,158,248,0.1);
+  border: 1px solid rgba(124,158,248,0.25);
+  color: #7c9ef8;
+}
+.sc-llm-icon {
+  color: #b88cff;
+  font-size: 0.8em;
+}
+/* ── Explanation box ── */
+#sc-explanation {
+  padding: 14px 20px;
+  border-radius: 12px;
+  background: rgba(124,158,248,0.08);
+  border: 1px solid rgba(124,158,248,0.2);
+  color: #c8cedf;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.sc-expl-icon {
+  margin-right: 6px;
+  font-size: 1.3em;
+}
+
+/* ══════════════════════════════════════════════════
+   FEEDBACK ZONE — flashy result area
+   ══════════════════════════════════════════════════ */
+#sc-feedback-zone {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  min-height: 140px;
+  animation: sc-zone-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes sc-zone-enter {
+  0%   { opacity: 0; transform: scale(0.85) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Particle canvas behind everything */
+#sc-particles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Animated glow pulse behind content */
+#sc-feedback-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.5;
+}
+.sc-glow-correct {
+  background: radial-gradient(ellipse at center, rgba(92,184,92,0.35) 0%, transparent 70%);
+  animation: sc-glow-pulse-green 1.5s ease-in-out infinite;
+}
+.sc-glow-wrong {
+  background: radial-gradient(ellipse at center, rgba(224,92,92,0.35) 0%, transparent 70%);
+  animation: sc-glow-pulse-red 1.5s ease-in-out infinite;
+}
+.sc-glow-close {
+  background: radial-gradient(ellipse at center, rgba(224,168,92,0.35) 0%, transparent 70%);
+  animation: sc-glow-pulse-amber 1.5s ease-in-out infinite;
+}
+@keyframes sc-glow-pulse-green {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.02); }
+}
+@keyframes sc-glow-pulse-red {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.02); }
+}
+@keyframes sc-glow-pulse-amber {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(1.02); }
+}
+
+/* Inner content */
+#sc-feedback-inner {
+  position: relative;
+  z-index: 2;
+  padding: 24px 28px;
+}
+
+/* Result banner — BIG */
+#sc-feedback-zone #sc-result {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+#sc-feedback-zone .sc-result-banner {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 1.6rem;
+}
+.sc-result-banner.sc-result-win #sc-feedback-zone,
+#sc-feedback-zone.sc-zone-correct {
+  border: 2px solid rgba(92,184,92,0.4);
+  background: linear-gradient(135deg, rgba(16,40,16,0.95), rgba(20,28,20,0.95));
+}
+#sc-feedback-zone.sc-zone-wrong {
+  border: 2px solid rgba(224,92,92,0.4);
+  background: linear-gradient(135deg, rgba(40,16,16,0.95), rgba(28,18,18,0.95));
+}
+#sc-feedback-zone.sc-zone-close {
+  border: 2px solid rgba(224,168,92,0.4);
+  background: linear-gradient(135deg, rgba(40,32,16,0.95), rgba(28,24,18,0.95));
+}
+#sc-feedback-zone.sc-zone-correct #sc-result { color: #5ddb5d; }
+#sc-feedback-zone.sc-zone-wrong   #sc-result { color: #f06060; }
+#sc-feedback-zone.sc-zone-close   #sc-result { color: #f0b840; }
+
+/* Result icon — large animated */
+.sc-result-icon-big {
+  font-size: 2.4rem;
+  display: inline-block;
+  animation: sc-icon-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  margin-right: 10px;
+  vertical-align: middle;
+}
+@keyframes sc-icon-bounce {
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.4); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Heard text in feedback zone */
+#sc-feedback-zone #sc-heard {
+  font-size: 0.95rem;
+  color: #666e88;
+  font-style: italic;
+  margin-top: 10px;
+}
+
+/* Shake animation for wrong */
+.sc-shake {
+  animation: sc-shake 0.5s ease-in-out;
+}
+@keyframes sc-shake {
+  0%, 100% { transform: translateX(0); }
+  15%      { transform: translateX(-8px); }
+  30%      { transform: translateX(8px); }
+  45%      { transform: translateX(-6px); }
+  60%      { transform: translateX(6px); }
+  75%      { transform: translateX(-3px); }
+  90%      { transform: translateX(3px); }
+}
+
+/* ── Closeness badges ── */
+.sc-closeness-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.sc-close-exact   { background: rgba(92,184,92,0.15); color: #5cb85c; }
+.sc-close-synonym { background: rgba(92,168,248,0.15); color: #5ca8f8; }
+.sc-close-close   { background: rgba(224,168,92,0.15); color: #e0a85c; }
+.sc-close-wrong   { background: rgba(224,92,92,0.15); color: #e05c5c; }
+
+.sc-result-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sc-result-icon {
+  font-size: 1.1em;
+  margin-right: 4px;
+}
+
+/* "Close" result banner (amber) */
+.sc-result-close {
+  background: rgba(224,168,92,0.12);
+  border: 1px solid rgba(224,168,92,0.3);
+  color: #e0a85c;
+}
+
+/* "Close" blank state (amber underline) */
+.sc-blank-close {
+  color: #e0a85c;
+  border-bottom-color: #e0a85c;
+  animation: none;
+}
+
+/* New LLM category badges */
+.sc-cat-science     { background: rgba(92,184,92,0.12); border: 1px solid rgba(92,184,92,0.3); color: #5cb85c; }
+.sc-cat-geography   { background: rgba(92,168,184,0.12); border: 1px solid rgba(92,168,184,0.3); color: #5ca8b8; }
+.sc-cat-history     { background: rgba(184,156,92,0.12); border: 1px solid rgba(184,156,92,0.3); color: #b89c5c; }
+.sc-cat-pop-culture { background: rgba(224,124,168,0.12); border: 1px solid rgba(224,124,168,0.3); color: #e07ca8; }
