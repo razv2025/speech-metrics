@@ -11,31 +11,28 @@ Endpoints:
 import os
 import re
 import ssl
-import base64
 import difflib
-import secrets
 import tempfile
-import traceback
 import json
-import sqlite3
-import uuid as _uuid_mod
-import urllib.request
-from datetime import datetime, timezone
 
 import numpy as np
 
+from server_auth import register_basic_auth, request_username, sanitize_username
+from server_logging import configure_logging, register_request_logging
+from server_publish import PublishStore, create_publish_router
+
+log = configure_logging('speech_metrics.server')
+
 _ALLOW_INSECURE_MODEL_DOWNLOADS = os.environ.get('ALLOW_INSECURE_MODEL_DOWNLOADS') == '1'
 if _ALLOW_INSECURE_MODEL_DOWNLOADS:
-    print('WARNING: TLS verification disabled for outbound model downloads')
+    log.warning('TLS verification disabled for outbound model downloads')
     ssl._create_default_https_context = ssl._create_unverified_context  # noqa: SLF001
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, Tuple
-import boto3
-from botocore.exceptions import ClientError
+from typing import Optional
 from scipy.fft import fft, ifft
 from scipy.spatial import ConvexHull
 
@@ -98,128 +95,26 @@ async def no_cache_static(request, call_next):
 # ---------------------------------------------------------------------------
 _APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 if not _APP_PASSWORD:
-    print("WARNING: APP_PASSWORD env var not set — all requests will be rejected")
+    log.warning("APP_PASSWORD env var not set - all requests will be rejected")
 
-
-def _decode_basic_auth(authorization: str) -> Optional[Tuple[str, str]]:
-    if not authorization.startswith("Basic "):
-        return None
-    try:
-        decoded = base64.b64decode(authorization[6:]).decode("utf-8", errors="replace")
-        username, password = decoded.split(":", 1)
-        return username, password
-    except Exception:
-        return None
-
-
-def _sanitize_username(username: str) -> str:
-    return ''.join(c for c in username if 32 <= ord(c) < 127)[:40].strip()
-
-
-def _request_username(request: Request) -> str:
-    creds = _decode_basic_auth(request.headers.get("Authorization", ""))
-    return _sanitize_username(creds[0]) if creds else ""
-
-
-def _check_auth(authorization: str) -> bool:
-    creds = _decode_basic_auth(authorization)
-    if not creds:
-        return False
-    _, password = creds
-    return secrets.compare_digest(password.encode("utf-8"), _APP_PASSWORD.encode("utf-8"))
-
-
-@app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    if request.url.path == "/health":
-        return await call_next(request)
-    if _APP_PASSWORD and _check_auth(request.headers.get("Authorization", "")):
-        return await call_next(request)
-    return Response(
-        status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Speech Assessment"'},
-        content="Unauthorized",
-    )
+register_basic_auth(app, lambda: _APP_PASSWORD)
+register_request_logging(app, log)
 
 
 # ---------------------------------------------------------------------------
 # Publish infrastructure — S3 + SQLite
 # ---------------------------------------------------------------------------
-def _detect_aws_region() -> str:
-    try:
-        token = urllib.request.urlopen(
-            urllib.request.Request(
-                'http://169.254.169.254/latest/api/token', method='PUT',
-                headers={'X-aws-ec2-metadata-token-ttl-seconds': '10'},
-            ), timeout=1,
-        ).read().decode()
-        req = urllib.request.Request(
-            'http://169.254.169.254/latest/meta-data/placement/region',
-            headers={'X-aws-ec2-metadata-token': token},
-        )
-        return urllib.request.urlopen(req, timeout=1).read().decode()
-    except Exception:
-        return boto3.session.Session().region_name or 'us-east-1'
-
-
-_AWS_REGION = _detect_aws_region()
-_S3_BUCKET  = 'speech-metrics-storage'
-_S3_PREFIX  = 'public-samples/'
-_s3_client  = None
-
-
-def _get_s3():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client('s3', region_name=_AWS_REGION)
-    return _s3_client
-
-
-def _init_s3():
-    print(f'S3 configured: {_S3_BUCKET}/{_S3_PREFIX}')
-
-
 _DB_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'published.db')
-
-
-def _db():
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _init_db():
-    with _db() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS published (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                task           INTEGER NOT NULL,
-                user_id        TEXT,
-                username       TEXT,
-                filename       TEXT,
-                published_at   TEXT NOT NULL,
-                s3_key         TEXT NOT NULL,
-                metrics        TEXT,
-                reference_text TEXT,
-                audio_sr       INTEGER,
-                duration_s     REAL,
-                version        TEXT
-            )
-        ''')
-        # Migrate existing table (column added after initial deploy)
-        try:
-            conn.execute('ALTER TABLE published ADD COLUMN username TEXT')
-        except Exception:
-            pass
-        conn.commit()
+_publish_store = PublishStore(db_path=_DB_PATH, logger=log)
 
 
 # Initialise on import (runs whether started via __main__ or uvicorn)
 try:
-    _init_db()
-    _init_s3()
+    _publish_store.init()
 except Exception as _pub_init_err:
-    print(f'WARNING: publish infrastructure unavailable: {_pub_init_err}')
+    log.warning('publish infrastructure unavailable: %s', _pub_init_err)
+
+app.include_router(create_publish_router(_publish_store, request_username, sanitize_username))
 
 # Whisper loaded lazily on first Task-3 request to avoid delaying startup
 _whisper_model = None
@@ -229,9 +124,9 @@ def get_whisper():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
-        print("Loading Whisper base model (one-time) …", flush=True)
+        log.info('Loading Whisper base model (one-time)')
         _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
-        print("Whisper ready.", flush=True)
+        log.info('Whisper ready')
     return _whisper_model
 
 
@@ -586,7 +481,7 @@ def analyze_task3(sound: parselmouth.Sound) -> dict:
             ]
             avg_pause_s = float(np.mean(pauses)) if pauses else 0.0
     except Exception:
-        traceback.print_exc()
+        log.exception('reading_passage_transcription_failed')
 
     return {
         "f0_mean_hz":        f0_mean,
@@ -635,96 +530,7 @@ def compute_articulation(transcript: str, reference: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Publish endpoints
-# ---------------------------------------------------------------------------
-_TASK_SLUGS = {'sustained-phonation': 1, 'pitch-glides': 2, 'reading-passage': 3}
-
-
-@app.post('/publish/{task_slug}')
-async def publish_entry(task_slug: str, request: Request, file: UploadFile = File(...), metadata: str = Form(...)):
-    task_n = _TASK_SLUGS.get(task_slug)
-    if task_n is None:
-        raise HTTPException(status_code=404, detail='Unknown task')
-    data    = json.loads(metadata)
-    audio   = await file.read()
-    s3_key  = f'{_S3_PREFIX}{task_slug}/{_uuid_mod.uuid4()}.wav'
-    owner_username = _request_username(request) or _sanitize_username(str(data.get('username') or ''))
-    _get_s3().put_object(Bucket=_S3_BUCKET, Key=s3_key, Body=audio, ContentType='audio/wav')
-    now = datetime.now(timezone.utc).isoformat()
-    with _db() as conn:
-        cur = conn.execute(
-            'INSERT INTO published '
-            '(task,user_id,username,filename,published_at,s3_key,metrics,reference_text,audio_sr,duration_s,version) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            (task_n, data.get('user_id'), owner_username or None, data.get('filename'), now, s3_key,
-             json.dumps(data.get('metrics', {})), data.get('reference_text'),
-             data.get('audio_sr'), data.get('duration_s'), data.get('version')),
-        )
-        conn.commit()
-        entry_id = cur.lastrowid
-    return {'id': entry_id, 'published_at': now}
-
-
-@app.get('/published/{task_slug}')
-def get_published(task_slug: str):
-    task_n = _TASK_SLUGS.get(task_slug)
-    if task_n is None:
-        raise HTTPException(status_code=404, detail='Unknown task')
-    with _db() as conn:
-        rows = conn.execute(
-            'SELECT id,task,user_id,username,filename,published_at,metrics,audio_sr,duration_s,version '
-            'FROM published WHERE task=? ORDER BY published_at DESC', (task_n,),
-        ).fetchall()
-    result = []
-    for r in rows:
-        e = dict(r)
-        e['metrics'] = json.loads(e['metrics'] or '{}')
-        result.append(e)
-    return result
-
-
-@app.delete('/published/{entry_id}')
-def delete_published(entry_id: int, request: Request, user_id: Optional[str] = None):
-    request_username = _request_username(request)
-    with _db() as conn:
-        row = conn.execute('SELECT s3_key, username, user_id FROM published WHERE id=?', (entry_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail='Not found')
-        owner_username = _sanitize_username(row['username'] or '')
-        if owner_username and request_username:
-            if request_username != owner_username:
-                raise HTTPException(status_code=403, detail='Forbidden')
-        elif not row['user_id'] or user_id != row['user_id']:
-            raise HTTPException(status_code=403, detail='Forbidden')
-        try:
-            _get_s3().delete_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
-        except Exception as exc:
-            print(f'S3 delete warning: {exc}')
-        conn.execute('DELETE FROM published WHERE id=?', (entry_id,))
-        conn.commit()
-    return {'ok': True}
-
-
-@app.get('/audio/{entry_id}')
-def stream_audio(entry_id: int):
-    with _db() as conn:
-        row = conn.execute('SELECT s3_key, filename FROM published WHERE id=?', (entry_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail='Not found')
-    obj  = _get_s3().get_object(Bucket=_S3_BUCKET, Key=row['s3_key'])
-    fname = (row['filename'] or 'recording').rstrip('.zip') + '.wav'
-    return StreamingResponse(
-        obj['Body'],
-        media_type='audio/wav',
-        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
-    )
-
-
-# ---------------------------------------------------------------------------
-# Verbal Fluency — word lists, matching, endpoints
+# Verbal Fluency - word lists, matching, endpoints
 # ---------------------------------------------------------------------------
 
 _VF_WORD_LISTS = {
@@ -1153,7 +959,7 @@ def health():
 
 @app.get("/me")
 def get_me(request: Request):
-    username = _request_username(request)
+    username = request_username(request)
     return {"username": username or "User"}
 
 
@@ -1222,7 +1028,8 @@ if __name__ == "__main__":
     ssl_certfile = os.path.join(_dir, "cert.pem")
     use_ssl = os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile)
     proto = "https" if use_ssl else "http"
-    print(f"Starting speech metrics server on {proto}://0.0.0.0:{port}")
+    log.info("Starting speech metrics server on %s://0.0.0.0:%s", proto, port)
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info",
                 ssl_keyfile=ssl_keyfile  if use_ssl else None,
                 ssl_certfile=ssl_certfile if use_ssl else None)
+
