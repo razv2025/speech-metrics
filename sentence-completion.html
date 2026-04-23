@@ -48,9 +48,15 @@
         <span id="sc-status"></span>
       </div>
 
-      <div id="sc-result" style="display:none"></div>
-      <div id="sc-explanation" style="display:none"></div>
-      <div id="sc-heard" style="display:none"></div>
+      <div id="sc-feedback-zone" style="display:none">
+        <canvas id="sc-particles" width="800" height="300"></canvas>
+        <div id="sc-feedback-glow"></div>
+        <div id="sc-feedback-inner">
+          <div id="sc-result"></div>
+          <div id="sc-explanation"></div>
+          <div id="sc-heard"></div>
+        </div>
+      </div>
 
       <div id="sc-stats-row">
         <span class="sc-stat"><span id="sc-score">0</span> correct</span>

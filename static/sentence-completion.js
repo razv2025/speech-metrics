@@ -142,23 +142,7 @@ function currentSentence() {
 }
 
 // ── Display ──
-function showSentence() {
-  const s = currentSentence();
-  if (!s) {
-    document.getElementById('sc-sentence').textContent = 'No sentences available.';
-    return;
-  }
-  const badge = document.getElementById('sc-cat-badge');
-  badge.textContent = s.cat;
-  badge.className = 'sc-cat-badge sc-cat-' + s.cat.toLowerCase().replace(/\s+/g, '-');
-  document.getElementById('sc-sentence').innerHTML = renderBlank(s.text, 'idle');
-  document.getElementById('sc-progress').textContent =
-    `${(scQueueIdx % scQueue.length) + 1} / ${scQueue.length}`;
-  document.getElementById('sc-result').style.display = 'none';
-  document.getElementById('sc-heard').style.display  = 'none';
-  document.getElementById('sc-status').textContent   = '';
-  setBtnState('idle');
-}
+// showSentence is defined after showResult (below)
 
 function renderBlank(text, state) {
   let cls = 'sc-blank';
@@ -314,64 +298,203 @@ async function sendClip(pcm, sr, speechMs) {
 
 // ── Closeness labels ──
 const CLOSENESS_INFO = {
-  exact:   { icon: '✓',  label: 'Exact match',      cls: 'sc-close-exact' },
-  synonym: { icon: '≈',  label: 'Accepted synonym',  cls: 'sc-close-synonym' },
-  close:   { icon: '~',  label: 'Close, but not quite', cls: 'sc-close-close' },
-  wrong:   { icon: '✗',  label: 'Incorrect',         cls: 'sc-close-wrong' },
+  exact:   { icon: '🎉', label: 'Exact match',          cls: 'sc-close-exact' },
+  synonym: { icon: '✨', label: 'Accepted synonym',      cls: 'sc-close-synonym' },
+  close:   { icon: '🤏', label: 'Close, but not quite',  cls: 'sc-close-close' },
+  wrong:   { icon: '💥', label: 'Incorrect',             cls: 'sc-close-wrong' },
 };
 
-// ── Show result ──
+// ── Sound effects (generated via Web Audio API — no external files) ──
+function playCorrectSound() {
+  try {
+    const ctx = new AudioContext();
+    // Cheerful ascending arpeggio
+    [0, 0.12, 0.24, 0.4].forEach((t, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = [523, 659, 784, 1047][i]; // C5, E5, G5, C6
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.35);
+    });
+    setTimeout(() => ctx.close(), 1500);
+  } catch(e) {}
+}
+
+function playWrongSound() {
+  try {
+    const ctx = new AudioContext();
+    // Descending "buzz" — two low tones
+    [0, 0.15].forEach((t, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = [220, 165][i]; // A3, E3
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.4);
+    });
+    setTimeout(() => ctx.close(), 1500);
+  } catch(e) {}
+}
+
+function playCloseSound() {
+  try {
+    const ctx = new AudioContext();
+    // Wavering "almost" tone
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(415, ctx.currentTime + 0.2);
+    osc.frequency.linearRampToValueAtTime(440, ctx.currentTime + 0.4);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.55);
+    setTimeout(() => ctx.close(), 1500);
+  } catch(e) {}
+}
+
+// ── Particle system for celebrations ──
+let _particleAnim = null;
+function launchParticles(type) {
+  const canvas = document.getElementById('sc-particles');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+
+  const colors = type === 'correct'
+    ? ['#5ddb5d','#88ff88','#44cc44','#ffffff','#aaffaa','#ffdd44']
+    : type === 'close'
+    ? ['#f0b840','#ffdd77','#cc9922','#ffffff','#ffeeaa']
+    : ['#f06060','#ff8888','#cc3333','#ffffff','#ffaaaa'];
+
+  const particles = [];
+  const count = type === 'correct' ? 60 : 25;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: canvas.width * Math.random(),
+      y: canvas.height + 10,
+      vx: (Math.random() - 0.5) * 6,
+      vy: -(3 + Math.random() * 6),
+      size: 3 + Math.random() * 5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1.0,
+      decay: 0.008 + Math.random() * 0.012,
+      gravity: 0.08,
+      shape: Math.random() > 0.5 ? 'circle' : 'star',
+    });
+  }
+
+  if (_particleAnim) cancelAnimationFrame(_particleAnim);
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+    for (const p of particles) {
+      if (p.life <= 0) continue;
+      alive = true;
+      p.x += p.vx;
+      p.vy += p.gravity;
+      p.y += p.vy;
+      p.life -= p.decay;
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      if (p.shape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        drawStar(ctx, p.x, p.y, p.size);
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (alive) _particleAnim = requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function drawStar(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+    const method = i === 0 ? 'moveTo' : 'lineTo';
+    ctx[method](x + r * Math.cos(angle), y + r * Math.sin(angle));
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ── Show result — FLASHY ──
 function showResult(result, sentence, speechMs, serverMs) {
   const heard       = (result.transcript || '').trim();
   const correct     = result.correct;
   const canonical   = result.canonical;
-  const llmVal      = result.llm_validated || false;
   const closeness   = result.closeness || (correct ? 'exact' : 'wrong');
   const explanation = result.explanation || '';
+  const info        = CLOSENESS_INFO[closeness] || CLOSENESS_INFO.wrong;
 
   // Fill blank
   const blankState = correct ? 'correct' : (closeness === 'close' ? 'close' : 'wrong');
   fillBlank(canonical, blankState);
 
-  // Result banner
-  const rDiv = document.getElementById('sc-result');
-  rDiv.style.display = 'block';
-  rDiv.innerHTML = '';
-
-  const info = CLOSENESS_INFO[closeness] || CLOSENESS_INFO.wrong;
-
+  // Update scores
   if (correct) {
-    rDiv.className = 'sc-result-banner sc-result-win';
     scScore++;
     document.getElementById('sc-score').textContent = scScore;
   } else {
-    rDiv.className = 'sc-result-banner ' + (closeness === 'close' ? 'sc-result-close' : 'sc-result-lose');
     scWrong++;
     document.getElementById('sc-wrong').textContent = scWrong;
   }
 
-  // Build result content with closeness badge
-  const mainLine = document.createElement('div');
-  mainLine.className = 'sc-result-main';
+  // Show feedback zone
+  const zone = document.getElementById('sc-feedback-zone');
+  zone.style.display = 'block';
+  zone.className = correct ? 'sc-zone-correct' : (closeness === 'close' ? 'sc-zone-close' : 'sc-zone-wrong');
+  // Re-trigger entry animation
+  zone.style.animation = 'none';
+  zone.offsetHeight; // force reflow
+  zone.style.animation = '';
+
+  // Glow
+  const glow = document.getElementById('sc-feedback-glow');
+  glow.className = correct ? 'sc-glow-correct' : (closeness === 'close' ? 'sc-glow-close' : 'sc-glow-wrong');
+
+  // Result banner
+  const rDiv = document.getElementById('sc-result');
+  rDiv.innerHTML = '';
   if (correct) {
-    mainLine.innerHTML = `<span class="sc-result-icon">${info.icon}</span> Correct!`;
+    rDiv.innerHTML = `<span class="sc-result-icon-big">${info.icon}</span> Correct!`;
     if (closeness === 'synonym') {
-      mainLine.innerHTML += ` <span class="sc-closeness-badge ${info.cls}">${info.label}</span>`;
+      rDiv.innerHTML += ` <span class="sc-closeness-badge ${info.cls}">${info.label}</span>`;
     }
   } else {
-    mainLine.innerHTML = `<span class="sc-result-icon">${info.icon}</span> The answer is "<strong>${canonical}</strong>"`;
+    rDiv.innerHTML = `<span class="sc-result-icon-big">${info.icon}</span> The answer is "<strong>${canonical}</strong>"`;
     if (closeness === 'close') {
-      mainLine.innerHTML += ` <span class="sc-closeness-badge ${info.cls}">${info.label}</span>`;
+      rDiv.innerHTML += ` <span class="sc-closeness-badge ${info.cls}">${info.label}</span>`;
     }
   }
-  rDiv.appendChild(mainLine);
 
-  // Explanation line
+  // Shake for wrong
+  if (!correct && closeness !== 'close') {
+    zone.classList.add('sc-shake');
+    setTimeout(() => zone.classList.remove('sc-shake'), 600);
+  }
+
+  // Explanation
   const explDiv = document.getElementById('sc-explanation');
-  if (explDiv && explanation) {
+  if (explanation) {
     explDiv.style.display = 'block';
     explDiv.innerHTML = `<span class="sc-expl-icon">💡</span> ${explanation}`;
-  } else if (explDiv) {
+  } else {
     explDiv.style.display = 'none';
   }
 
@@ -379,7 +502,21 @@ function showResult(result, sentence, speechMs, serverMs) {
   const hDiv = document.getElementById('sc-heard');
   if (heard) {
     hDiv.style.display = 'block';
-    hDiv.textContent   = `Heard: "${heard}"`;
+    hDiv.textContent = `🎤 Heard: "${heard}"`;
+  } else {
+    hDiv.style.display = 'none';
+  }
+
+  // 🎵 Play sound
+  if (correct) {
+    playCorrectSound();
+    launchParticles('correct');
+  } else if (closeness === 'close') {
+    playCloseSound();
+    launchParticles('close');
+  } else {
+    playWrongSound();
+    launchParticles('wrong');
   }
 
   // Log entry
@@ -400,11 +537,30 @@ function showResult(result, sentence, speechMs, serverMs) {
   scProcessing = false;
   setBtnState('idle');
 
-  // Auto-advance (longer delay for wrong + explanation to read)
-  const delay = correct ? 2000 : (explanation ? 4500 : 3000);
+  // Auto-advance (longer delay for richer explanations)
+  const delay = correct ? 3500 : (explanation ? 6000 : 4000);
   setTimeout(() => {
     advanceSentence();
   }, delay);
+}
+
+function showSentence() {
+  const s = currentSentence();
+  if (!s) {
+    document.getElementById('sc-sentence').textContent = 'No sentences available.';
+    return;
+  }
+  const badge = document.getElementById('sc-cat-badge');
+  badge.textContent = s.cat;
+  badge.className = 'sc-cat-badge sc-cat-' + s.cat.toLowerCase().replace(/\s+/g, '-');
+  document.getElementById('sc-sentence').innerHTML = renderBlank(s.text, 'idle');
+  document.getElementById('sc-progress').textContent =
+    `${(scQueueIdx % scQueue.length) + 1} / ${scQueue.length}`;
+  // Hide feedback zone
+  const zone = document.getElementById('sc-feedback-zone');
+  if (zone) zone.style.display = 'none';
+  document.getElementById('sc-status').textContent = '';
+  setBtnState('idle');
 }
 
 async function advanceSentence() {

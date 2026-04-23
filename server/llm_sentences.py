@@ -1,11 +1,14 @@
 """
-LLM-powered sentence completion — generation & validation via LM Studio.
+LLM-powered sentence completion — generation & validation.
 
-Uses the OpenAI-compatible API exposed by LM Studio on localhost:1234.
-Falls back gracefully when LM Studio is unavailable.
+Supports two backends (controlled by LLM_PROVIDER env var):
+  - "openai"   : OpenAI API (requires OPENAI_API_KEY env var)
+  - "lmstudio" : LM Studio local server on localhost:1234 (default)
+Falls back gracefully when the LLM backend is unavailable.
 """
 
 import json
+import os
 import random
 import threading
 import time
@@ -15,12 +18,23 @@ from collections import deque
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# LM Studio client
+# LLM client — supports OpenAI API or LM Studio (local)
 # ---------------------------------------------------------------------------
-_LM_BASE_URL = "http://localhost:1234/v1"
-# LM Studio local server does not require a real API key
-_LM_API_KEY = "lm-studio"
-_LM_MODEL = "qwen2.5-coder-14b-instruct"
+_LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "lmstudio")
+
+if _LLM_PROVIDER == "openai":
+    _LM_BASE_URL = None  # use default OpenAI endpoint
+    _LM_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+    _LM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    if not _LM_API_KEY:
+        print("WARNING: LLM_PROVIDER=openai but OPENAI_API_KEY not set")
+    else:
+        print(f"[LLM] Using OpenAI API with model {_LM_MODEL}")
+else:
+    _LM_BASE_URL = os.environ.get("LM_STUDIO_URL", "http://localhost:1234/v1")
+    _LM_API_KEY = "not-needed"
+    _LM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder-14b-instruct")
+    print(f"[LLM] Using LM Studio at {_LM_BASE_URL} with model {_LM_MODEL}")
 
 _client = None
 
@@ -28,12 +42,15 @@ _client = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(base_url=_LM_BASE_URL, api_key=_LM_API_KEY)
+        kwargs = {"api_key": _LM_API_KEY}
+        if _LM_BASE_URL:
+            kwargs["base_url"] = _LM_BASE_URL
+        _client = OpenAI(**kwargs)
     return _client
 
 
 def is_llm_available() -> bool:
-    """Check if LM Studio server is reachable and a model is loaded."""
+    """Check if the LLM backend is reachable."""
     try:
         c = _get_client()
         c.models.list()
@@ -103,7 +120,7 @@ Return ONLY a JSON array, no markdown fences, no explanation:
 
 
 def _generate_batch(category: str, count: int = _BATCH_SIZE) -> list[dict]:
-    """Call LM Studio to generate a batch of sentences. Returns list of dicts."""
+    """Call LLM to generate a batch of sentences. Returns list of dicts."""
     desc = CATEGORIES.get(category, category)
     prompt = _GEN_PROMPT.format(count=count, description=desc)
 
@@ -150,7 +167,6 @@ def _generate_batch(category: str, count: int = _BATCH_SIZE) -> list[dict]:
     except json.JSONDecodeError:
         # Try to salvage partial JSON by fixing common issues
         try:
-            # Sometimes LLM outputs trailing comma or unescaped chars
             raw_fixed = raw.rstrip().rstrip(",") + "]" if not raw.rstrip().endswith("]") else raw
             sentences = json.loads(raw_fixed)
             result = []
@@ -178,26 +194,44 @@ def _generate_batch(category: str, count: int = _BATCH_SIZE) -> list[dict]:
 # Answer validation via LLM — with semantic feedback
 # ---------------------------------------------------------------------------
 _CHECK_PROMPT = """\
+You are a charismatic, warm, and knowledgeable quiz show host. A contestant just answered a fill-in-the-blank question.
+
 Sentence: "{sentence}"
 Correct answer: "{answer}"
-User said: "{spoken}"
+Contestant said: "{spoken}"
 
-Judge the user's answer and return ONLY a JSON object (no markdown, no extra text):
+Return ONLY a JSON object (no markdown, no extra text):
 {{
   "correct": true or false,
   "closeness": "exact" or "synonym" or "close" or "wrong",
-  "explanation": "One short sentence explaining WHY the answer is right or wrong, and what the sentence means."
+  "explanation": "Your quiz-host response (2-3 sentences max)"
 }}
 
-Guidelines:
-- "exact": user said the correct word or a trivial variant (plural/singular, tense change). Mark as correct.
-- "synonym": user said a valid synonym that fits the sentence well (e.g. "rock" for "stone", "birds" for "bird"). Mark as correct.
-- "close": user's answer is semantically related but doesn't really fit (e.g. "robin" for "bird"). Mark as NOT correct.
-- "wrong": completely unrelated answer. Mark as NOT correct.
-- Be LENIENT: plurals, synonyms, and near-equivalents should be accepted (correct=true).
-- Keep explanation under 25 words. Be encouraging even when wrong.
-- If correct, explain what the completed sentence means or where it comes from.
-- If wrong, briefly explain why the correct answer fits better."""
+Your response style depends on the result:
+
+IF CORRECT (exact match):
+  Celebrate! Then share a fascinating fun fact, anecdote, or piece of trivia related to the sentence topic.
+  Example: "Brilliant! 🎉 Did you know that the original proverb dates back to 1605? It was first recorded by Miguel de Cervantes in Don Quixote!"
+
+IF CORRECT (synonym accepted):
+  Accept it warmly, note the official answer, then share an interesting connection.
+  Example: "I'll take it! We were looking for 'stone', but 'rock' works perfectly! Fun fact — geologists actually distinguish between rocks and stones by size."
+
+IF CLOSE (related but not quite right):
+  Be encouraging but explain WHY the correct answer fits better. Teach them something about the topic.
+  Example: "So close! You said 'robin' but we needed 'bird'. A robin IS a bird, but this proverb uses the general term — it actually originated in the 17th century and means that starting early gives you an advantage."
+
+IF WRONG (completely off):
+  Be kind and upbeat. Explain the correct answer and WHY it's the answer. Share knowledge that helps them remember next time.
+  Example: "Not quite, but don't worry! The answer is 'bird'. This famous proverb means that people who wake up early or act promptly tend to succeed. It first appeared in a 1670 collection of English proverbs!"
+
+Judging rules:
+- "exact": correct word or trivial variant (plural/singular, tense). Mark correct=true.
+- "synonym": valid synonym that fits well (e.g. "rock"/"stone", "birds"/"bird"). Mark correct=true.
+- "close": semantically related but doesn't fit (e.g. "robin" for "bird"). Mark correct=false.
+- "wrong": unrelated answer. Mark correct=false.
+- Be LENIENT on plurals, synonyms, near-equivalents (correct=true).
+- Keep total explanation under 50 words. Be warm, fun, educational."""
 
 
 def check_answer_llm(sentence_text: str, spoken: str, canonical_answer: str) -> dict | None:
@@ -319,7 +353,7 @@ def _trigger_refill(category: str):
 def prefill_all():
     """
     Fill all category pools at startup. Called once.
-    Runs generation sequentially to avoid overloading LM Studio.
+    Runs generation sequentially to avoid overloading the LLM backend.
     """
     print("[LLM] Pre-filling sentence pools…")
     for cat in CATEGORIES:
