@@ -54,11 +54,13 @@ except Exception:
     _GIT_VERSION = 'unknown'
 
 app = FastAPI()
+_CORS_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 _STATIC_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "static"))
