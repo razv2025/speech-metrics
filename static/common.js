@@ -416,6 +416,8 @@ function _applyServerMetricsToUI(task, d) {
     set('t1-cpp',     d.cpp_db,        1);
     set('t1-hnr',     d.hnr_db,        1);
     set('t1-noise',   d.noise_floor_db,1);
+    set('t1-avqi',    d.avqi,          2);
+    _computeAndDisplayDSI(d);
   } else if (task === 2) {
     set('t2-minf0',   d.f0_min_hz,     1);
     set('t2-maxf0',   d.f0_max_hz,     1);
@@ -441,6 +443,39 @@ function _applyServerMetricsToUI(task, d) {
       showArticResult(d.articulation_pct ?? null, d.consonant_precision_pct ?? null, d.transcript ?? '');
     }
   }
+}
+
+function _getMostRecentEntry(task) {
+  return new Promise(resolve => {
+    if (!logDB) { resolve(null); return; }
+    try {
+      const tx    = logDB.transaction('task' + task, 'readonly');
+      const store = tx.objectStore('task' + task);
+      const req   = store.openCursor(null, 'prev');
+      req.onsuccess = e => resolve(e.target.result ? e.target.result.value : null);
+      req.onerror   = () => resolve(null);
+    } catch(e) { resolve(null); }
+  });
+}
+
+async function _computeAndDisplayDSI(t1d) {
+  const el = document.getElementById('t1-dsi');
+  if (!el) return;
+  const t2 = await _getMostRecentEntry(2);
+  if (!t2 || !t2.metrics || t2.metrics.f0_max_hz == null) {
+    el.textContent = '—';
+    el.title = 'Run Pitch Glides (Task 2) first to enable DSI';
+    return;
+  }
+  const mpt       = t1d.mpt_s;
+  const jitter    = t1d.jitter_pct;
+  const spl_min   = t1d.spl_min_db;
+  const f0_max    = t2.metrics.f0_max_hz;
+  if (mpt == null || jitter == null || spl_min == null) { el.textContent = '—'; return; }
+  const dsi = 0.13 * mpt + 0.0053 * f0_max - 0.26 * spl_min - 1.18 * jitter + 12.4;
+  el.textContent = fmt(dsi, 1);
+  el.title = '';
+  updateScale('t1-dsi', dsi);
 }
 
 function applyServerResults(task, d, analysis_duration_s) {
@@ -1077,6 +1112,8 @@ const METRIC_SCALES = {
   't1-cpp':     { min: 0,   max: 25,  good: 'high'                        },
   't1-hnr':     { min: 0,   max: 35,  good: 'high'                        },
   't1-noise':   { min: 30,  max: 80,  good: 'low'                         },
+  't1-avqi':    { min: -2,  max: 8,   good: 'low'                         },
+  't1-dsi':     { min: -5,  max: 5,   good: 'high'                        },
   't2-minf0':   { min: 50,  max: 300, good: 'low'                         },
   't2-maxf0':   { min: 100, max: 600, good: 'high'                        },
   't2-range':   { min: 0,   max: 48,  good: 'high'                        },
@@ -1912,6 +1949,7 @@ const LOG_METRICS = {
     { key: 'cpp_db',              label: 'CPP<br>(dB)',   dec: 1, title: 'Cepstral peak prominence — overall voice quality (dB)' },
     { key: 'hnr_db',              label: 'HNR<br>(dB)',   dec: 1, title: 'Harmonics-to-noise ratio (dB)' },
     { key: 'noise_floor_db',      label: 'Nois<br>(dB)',  dec: 1, title: 'Ambient noise floor (dB)' },
+    { key: 'avqi',                label: 'AVQI',          dec: 2, title: 'Acoustic Voice Quality Index — lower is better, normal <2.95' },
     { key: 'duration_s',          label: 'Dur<br>(s)',    dec: 1, title: 'Recording duration (s)' },
     { key: 'analysis_duration_s', label: 'Anls<br>(s)',   dec: 1, title: 'Server analysis duration (s)' },
   ],
@@ -1983,7 +2021,8 @@ function _logFlatten(task, d) {
   if (task === 1) return {
     f0_mean_hz: d.f0_mean_hz, spl_mean_db: d.spl_mean_db, mpt_s: d.mpt_s,
     jitter_pct: d.jitter_pct, shimmer_pct: d.shimmer_pct, cpp_db: d.cpp_db,
-    hnr_db: d.hnr_db, noise_floor_db: d.noise_floor_db,
+    hnr_db: d.hnr_db, noise_floor_db: d.noise_floor_db, avqi: d.avqi,
+    shimmer_db: d.shimmer_db, spl_min_db: d.spl_min_db,
   };
   if (task === 2) return {
     f0_min_hz: d.f0_min_hz, f0_max_hz: d.f0_max_hz,

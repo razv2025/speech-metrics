@@ -409,14 +409,15 @@ def analyze_task1(sound: parselmouth.Sound) -> dict:
         pass
 
     # ── Jitter & Shimmer via PointProcess ──────────────────────────────────
-    jitter_pct = jitter_rap = shimmer_pct = shimmer_apq3 = shimmer_apq11 = None
+    jitter_pct = jitter_rap = shimmer_pct = shimmer_apq3 = shimmer_apq11 = shimmer_db = None
     try:
         pp = call(sound, "To PointProcess (periodic, cc)", 75.0, 600.0)
         jitter_pct   = safe(lambda: call(pp, "Get jitter (local)",   0, 0, 0.0001, 0.02, 1.3) * 100)
         jitter_rap   = safe(lambda: call(pp, "Get jitter (rap)",     0, 0, 0.0001, 0.02, 1.3) * 100)
-        shimmer_pct  = safe(lambda: call([sound, pp], "Get shimmer (local)",  0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
-        shimmer_apq3 = safe(lambda: call([sound, pp], "Get shimmer (apq3)",   0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
-        shimmer_apq11= safe(lambda: call([sound, pp], "Get shimmer (apq11)",  0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
+        shimmer_pct  = safe(lambda: call([sound, pp], "Get shimmer (local)",     0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
+        shimmer_apq3 = safe(lambda: call([sound, pp], "Get shimmer (apq3)",      0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
+        shimmer_apq11= safe(lambda: call([sound, pp], "Get shimmer (apq11)",     0, 0, 0.0001, 0.02, 1.3, 1.6) * 100)
+        shimmer_db   = safe(lambda: call([sound, pp], "Get shimmer (local, dB)", 0, 0, 0.0001, 0.02, 1.3, 1.6))
     except Exception:
         pass
 
@@ -434,8 +435,29 @@ def analyze_task1(sound: parselmouth.Sound) -> dict:
         else (None, None, None)
     )
 
+    # ── Softest intensity (10th-percentile) — used as I_low proxy for DSI ──
+    spl_min_db = None
+    try:
+        intens_obj = call(sound, "To Intensity", 100.0, 0.0, "yes")
+        spl_min_db = safe(lambda: call(intens_obj, "Get quantile", 0, 0, 0.10))
+    except Exception:
+        pass
+
     # ── CPP on voiced frames only ───────────────────────────────────────────
     cpp = compute_cpp(sound, pitch_obj)
+
+    # ── AVQI (Maryn & Weenink 2015) ─────────────────────────────────────────
+    # Uses shimmer(local,dB), shimmer APQ3%, shimmer APQ11%, CPP, HNR
+    avqi = None
+    if all(v is not None for v in [shimmer_db, shimmer_apq3, shimmer_apq11, cpp, hnr]):
+        avqi = round(float(
+            3.528
+            + 0.214  * shimmer_db
+            - 0.221  * shimmer_apq3
+            + 0.207  * shimmer_apq11
+            - 0.213  * cpp
+            - 0.259  * hnr
+        ), 2)
 
     # ── Formants / VSA on voiced frames only ───────────────────────────────
     fmts = compute_formants_vsa(sound, pitch_obj)
@@ -453,6 +475,9 @@ def analyze_task1(sound: parselmouth.Sound) -> dict:
         "hnr_db":        hnr,
         "noise_floor_db": noise_floor,
         "vsa_hz2":       fmts["vsa_hz2"],
+        "avqi":          avqi,
+        "shimmer_db":    shimmer_db,
+        "spl_min_db":    spl_min_db,
     }
 
 
