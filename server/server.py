@@ -446,6 +446,15 @@ def analyze_task1(sound: parselmouth.Sound) -> dict:
     # ── CPP on voiced frames only ───────────────────────────────────────────
     cpp = compute_cpp(sound, pitch_obj)
 
+    # ── Noam's Metric ───────────────────────────────────────────────────────
+    # jitter/shimmer thresholds are raw ratios (0.01 = 1 %, 0.038 = 3.8 %)
+    noam_score = 0
+    if cpp        is not None and cpp        < 12:  noam_score += 2   # high weight
+    if hnr        is not None and hnr        < 20:  noam_score += 1
+    if jitter_pct is not None and jitter_pct > 1.0: noam_score += 1   # ratio > 0.01
+    if shimmer_pct is not None and shimmer_pct > 3.8: noam_score += 1 # ratio > 0.038
+    noam_strained = noam_score >= 3
+
     # ── AVQI (Maryn & Weenink 2015) ─────────────────────────────────────────
     # Uses shimmer(local,dB), shimmer APQ3%, shimmer APQ11%, CPP, HNR
     avqi = None
@@ -478,6 +487,8 @@ def analyze_task1(sound: parselmouth.Sound) -> dict:
         "avqi":          avqi,
         "shimmer_db":    shimmer_db,
         "spl_min_db":    spl_min_db,
+        "noam_score":    noam_score,
+        "noam_strained": noam_strained,
     }
 
 

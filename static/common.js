@@ -418,6 +418,16 @@ function _applyServerMetricsToUI(task, d) {
     set('t1-noise',   d.noise_floor_db,1);
     set('t1-avqi',    d.avqi,          2);
     _computeAndDisplayDSI(d);
+    if (d.noam_score != null) {
+      const nEl = document.getElementById('t1-noam');
+      if (nEl) { nEl.textContent = d.noam_score; updateScale('t1-noam', d.noam_score); }
+      const nDesc = document.getElementById('t1-noam-desc');
+      if (nDesc) {
+        nDesc.textContent  = d.noam_strained ? 'Strained' : 'Normal';
+        nDesc.style.color  = d.noam_strained ? '#e05c5c' : '#5cb85c';
+        nDesc.style.fontWeight = '700';
+      }
+    }
   } else if (task === 2) {
     set('t2-minf0',   d.f0_min_hz,     1);
     set('t2-maxf0',   d.f0_max_hz,     1);
@@ -1112,6 +1122,7 @@ const METRIC_SCALES = {
   't1-cpp':     { min: 0,   max: 25,  good: 'high'                        },
   't1-hnr':     { min: 0,   max: 35,  good: 'high'                        },
   't1-noise':   { min: 30,  max: 80,  good: 'low'                         },
+  't1-noam':    { min: 0,   max: 5,   good: 'low'                         },
   't1-avqi':    { min: -2,  max: 8,   good: 'low'                         },
   't1-dsi':     { min: -5,  max: 5,   good: 'high'                        },
   't2-minf0':   { min: 50,  max: 300, good: 'low'                         },
@@ -1949,6 +1960,7 @@ const LOG_METRICS = {
     { key: 'cpp_db',              label: 'CPP<br>(dB)',   dec: 1, title: 'Cepstral peak prominence — overall voice quality (dB)' },
     { key: 'hnr_db',              label: 'HNR<br>(dB)',   dec: 1, title: 'Harmonics-to-noise ratio (dB)' },
     { key: 'noise_floor_db',      label: 'Nois<br>(dB)',  dec: 1, title: 'Ambient noise floor (dB)' },
+    { key: 'noam_score',          label: 'Noam',          dec: 0, title: "Noam's strain score (0–5, strained if ≥3)" },
     { key: 'avqi',                label: 'AVQI',          dec: 2, title: 'Acoustic Voice Quality Index — lower is better, normal <2.95' },
     { key: 'duration_s',          label: 'Dur<br>(s)',    dec: 1, title: 'Recording duration (s)' },
     { key: 'analysis_duration_s', label: 'Anls<br>(s)',   dec: 1, title: 'Server analysis duration (s)' },
@@ -2021,7 +2033,8 @@ function _logFlatten(task, d) {
   if (task === 1) return {
     f0_mean_hz: d.f0_mean_hz, spl_mean_db: d.spl_mean_db, mpt_s: d.mpt_s,
     jitter_pct: d.jitter_pct, shimmer_pct: d.shimmer_pct, cpp_db: d.cpp_db,
-    hnr_db: d.hnr_db, noise_floor_db: d.noise_floor_db, avqi: d.avqi,
+    hnr_db: d.hnr_db, noise_floor_db: d.noise_floor_db,
+    noam_score: d.noam_score, avqi: d.avqi,
     shimmer_db: d.shimmer_db, spl_min_db: d.spl_min_db,
   };
   if (task === 2) return {
