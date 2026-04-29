@@ -248,5 +248,14 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.environ.get("DEMO_PORT", 8766))
-    print(f"Starting Remepy demo at http://127.0.0.1:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    _dir        = os.path.dirname(os.path.realpath(__file__))
+    ssl_keyfile  = os.path.join(_dir, "key.pem")
+    ssl_certfile = os.path.join(_dir, "cert.pem")
+    use_ssl      = os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile)
+    proto        = "https" if use_ssl else "http"
+    print(f"Starting Remepy demo at {proto}://0.0.0.0:{port}")
+    uvicorn.run(
+        app, host="0.0.0.0", port=port, log_level="info",
+        ssl_keyfile=ssl_keyfile   if use_ssl else None,
+        ssl_certfile=ssl_certfile if use_ssl else None,
+    )
