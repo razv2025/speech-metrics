@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Voice Exercise · Remepy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:          #f5f3ee;
+  --surface:     #ffffff;
+  --surface-2:   #ece9e0;
+  --primary:     #8190d4;
+  --primary-dk:  #6b78bf;
+  --good:        #6db88a;
+  --too-low:     #b3a3d1;
+  --too-high:    #d98b78;
+  --text:        #2b3244;
+  --text-muted:  #7a8299;
+  --text-light:  #b0b7c8;
+  --shadow-sm:   0 2px 12px rgba(43,50,68,.07);
+  --shadow:      0 4px 28px rgba(43,50,68,.10);
+  --shadow-lg:   0 10px 48px rgba(43,50,68,.14);
+  --r:           22px;
+  --r-sm:        14px;
+  --circumference: 326.73; /* 2π×52 */
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* ── Screens ─────────────────────────────────────────── */
+.screen { display: none; flex-direction: column; align-items: center; gap: 20px; width: 100%; max-width: 460px; }
+.screen.active { display: flex; animation: fadeUp .45s ease both; }
+@keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── Cards ─────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 32px 28px;
+  width: 100%;
+}
+
+/* ── Typography ─────────────────────────────────────────── */
+.title   { font-size: 1.85rem; font-weight: 800; line-height: 1.2; }
+.subtitle { font-size: .96rem; color: var(--text-muted); line-height: 1.65; margin-top: 9px; }
+.eyebrow { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--text-light); }
+
+/* ── Buttons ─────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 15px 38px; border-radius: 100px; border: none;
+  font-family: inherit; font-size: .98rem; font-weight: 700;
+  cursor: pointer; transition: transform .15s, box-shadow .15s, background .15s;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: 0 4px 18px rgba(129,144,212,.38); }
+.btn-primary:hover { background: var(--primary-dk); transform: translateY(-2px); box-shadow: 0 7px 24px rgba(129,144,212,.46); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost { background: transparent; color: var(--text-muted); font-weight: 600; font-size: .9rem; padding: 12px 28px; }
+.btn-ghost:hover { color: var(--text); }
+
+/* ══════════════════════════════════════════════
+   WELCOME SCREEN
+══════════════════════════════════════════════ */
+#screen-welcome .card { text-align: center; }
+
+.logo-orb {
+  width: 76px; height: 76px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--too-low) 100%);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+  box-shadow: 0 6px 24px rgba(129,144,212,.35);
+  font-size: 2.1rem;
+}
+
+.overview-items { display: flex; flex-direction: column; gap: 12px; }
+.overview-item { display: flex; align-items: center; gap: 14px; }
+.overview-icon { font-size: 1.5rem; width: 36px; flex-shrink: 0; text-align: center; }
+.overview-text { font-size: .88rem; color: var(--text-muted); line-height: 1.5; }
+.overview-text strong { color: var(--text); font-weight: 700; }
+
+/* ══════════════════════════════════════════════
+   INSTRUCTIONS SCREEN
+══════════════════════════════════════════════ */
+.steps { display: flex; flex-direction: column; gap: 18px; margin: 18px 0 4px; }
+.step { display: flex; gap: 14px; align-items: flex-start; }
+.step-badge {
+  width: 30px; height: 30px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), var(--too-low));
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .78rem; font-weight: 800; color: #fff; margin-top: 1px;
+}
+.step-body { font-size: .92rem; color: var(--text-muted); line-height: 1.55; }
+.step-body strong { color: var(--text); font-weight: 700; }
+
+.zone-legend { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.zone-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px; border-radius: 100px;
+  font-size: .78rem; font-weight: 700;
+}
+.zone-good  { background: rgba(109,184,138,.12); color: var(--good);     }
+.zone-low   { background: rgba(179,163,209,.14); color: var(--too-low);  }
+.zone-high  { background: rgba(217,139,120,.12); color: var(--too-high); }
+.zone-dot   { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+/* ══════════════════════════════════════════════
+   GAME SCREEN
+══════════════════════════════════════════════ */
+#screen-game { gap: 16px; }
+
+/* Round dots */
+.round-dots { display: flex; gap: 9px; }
+.dot {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--surface-2);
+  transition: background .35s, transform .35s, box-shadow .35s;
+}
+.dot.done    { background: var(--good); }
+.dot.current {
+  background: var(--primary);
+  transform: scale(1.35);
+  box-shadow: 0 0 0 4px rgba(129,144,212,.22);
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(129,144,212,.3); }
+  50%      { box-shadow: 0 0 0 7px rgba(129,144,212,0); }
+}
+
+/* Monk stage */
+.stage {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 28px 20px 22px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+/* Monk */
+.monk-wrap { position: relative; width: 170px; height: 190px; }
+
+.aura {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .5s ease, background .4s ease;
+}
+.aura-outer { width: 160px; height: 160px; top: 12px; left: 5px; }
+.aura-inner { width: 120px; height: 120px; top: 32px; left: 25px; }
+.aura.show { opacity: 1; }
+
+.monk-svg {
+  position: relative; z-index: 1;
+  width: 160px; height: 180px;
+  filter: drop-shadow(0 6px 16px rgba(43,50,68,.10));
+  animation: monk-float 4.2s ease-in-out infinite;
+  transition: filter .4s ease;
+}
+@keyframes monk-float {
+  0%,100% { transform: translateY(0px); }
+  50%      { transform: translateY(-11px); }
+}
+.monk-svg.glow    { filter: drop-shadow(0 0 18px rgba(109,184,138,.5)) drop-shadow(0 6px 16px rgba(43,50,68,.08)); }
+.monk-svg.rattled { animation: monk-rattle .55s ease-in-out infinite; }
+@keyframes monk-rattle {
+  0%,100% { transform: translateX(0); }
+  25%     { transform: translateX(-5px) rotate(-1deg); }
+  75%     { transform: translateX(5px)  rotate(1deg); }
+}
+
+/* Status text */
+.status-text {
+  font-size: .96rem; font-weight: 600; color: var(--text-muted);
+  text-align: center; min-height: 1.5em;
+  transition: color .35s ease;
+}
+.status-text.st-good    { color: var(--good); }
+.status-text.st-low     { color: var(--too-low); }
+.status-text.st-high    { color: var(--too-high); }
+
+/* Bottom controls: volume bar + timer */
+.controls-row { display: flex; gap: 20px; align-items: center; width: 100%; justify-content: center; }
+
+/* Volume bar */
+.vol-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+.vol-track {
+  width: 28px; height: 188px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 2px 6px rgba(43,50,68,.08);
+}
+/* Static zone background */
+.vol-zones {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top,
+    rgba(179,163,209,.55) 0%,
+    rgba(179,163,209,.55) 28%,
+    rgba(109,184,138,.55) 28%,
+    rgba(109,184,138,.55) 72%,
+    rgba(217,139,120,.55) 72%,
+    rgba(217,139,120,.55) 100%
+  );
+}
+/* Frosted overlay hides zones above current level */
+.vol-frost {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  background: rgba(245,243,238,.82);
+  border-radius: 14px;
+  transition: height .07s ease;
+  height: 100%;
+}
+/* Zone separator lines */
+.vol-sep {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: rgba(255,255,255,.7);
+}
+
+.vol-labels {
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  height: 188px;
+  font-size: .66rem; font-weight: 700;
+  text-align: center; line-height: 1.3;
+  padding: 4px 0;
+}
+.vl-high { color: var(--too-high); }
+.vl-good { color: var(--good); }
+.vl-low  { color: var(--too-low); }
+
+/* Timer */
+.timer-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+.timer-ring { position: relative; width: 118px; height: 118px; }
+.timer-ring svg { transform: rotate(-90deg); }
+#timer-arc {
+  stroke: var(--primary);
+  stroke-dasharray: 326.73;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  transition: stroke-dashoffset .95s linear, stroke .6s ease;
+}
+.timer-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+#timer-num   { font-size: 2.6rem; font-weight: 800; color: var(--text); line-height: 1; }
+#timer-label { font-size: .62rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--text-light); margin-top: 3px; }
+
+/* Round label */
+.round-label { font-size: .82rem; font-weight: 700; color: var(--text-muted); text-align: center; }
+
+/* ══════════════════════════════════════════════
+   COOLDOWN SCREEN
+══════════════════════════════════════════════ */
+#screen-cooldown .card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+.breathe-orb {
+  width: 110px; height: 110px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(129,144,212,.25) 0%, rgba(179,163,209,.3) 100%);
+  animation: breathe 4s ease-in-out infinite;
+  margin: 4px 0;
+  box-shadow: 0 0 0 0 rgba(129,144,212,.2);
+}
+@keyframes breathe {
+  0%,100% { transform: scale(.85); box-shadow: 0 0 0 0  rgba(129,144,212,.2); }
+  50%      { transform: scale(1.1); box-shadow: 0 0 0 18px rgba(129,144,212,0);  }
+}
+.breathe-hint { font-size: .88rem; font-weight: 600; color: var(--text-light); letter-spacing: .04em; }
+.cooldown-timer-num { font-size: 2rem; font-weight: 800; color: var(--primary); }
+
+/* ══════════════════════════════════════════════
+   RESULTS SCREEN
+══════════════════════════════════════════════ */
+#screen-results { gap: 18px; }
+.results-headline { font-size: 2.2rem; font-weight: 800; text-align: center; line-height: 1.25; }
+
+.mpt-card {
+  background: var(--surface);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  width: 100%;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.mpt-big   { font-size: 4.2rem; font-weight: 800; color: var(--primary); line-height: 1; }
+.mpt-unit  { font-size: 1rem; color: var(--text-muted); font-weight: 600; }
+.mpt-desc  { font-size: .8rem; color: var(--text-light); margin-top: 4px; }
+
+.round-cards { display: flex; gap: 8px; width: 100%; justify-content: center; }
+.rc {
+  flex: 1; max-width: 72px;
+  background: var(--surface); border-radius: var(--r-sm);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 6px;
+  text-align: center;
+}
+.rc-label { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-light); margin-bottom: 4px; }
+.rc-val   { font-size: 1.25rem; font-weight: 800; color: var(--primary); }
+.rc-unit  { font-size: .6rem; color: var(--text-light); }
+.rc.best  { outline: 2px solid var(--good); outline-offset: -2px; }
+
+.results-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+
+/* ══════════════════════════════════════════════
+   OVERLAYS
+══════════════════════════════════════════════ */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(245,243,238,.92);
+  display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; z-index: 200;
+  backdrop-filter: blur(4px);
+}
+.overlay.show { display: flex; animation: fadeUp .3s ease both; }
+
+/* Countdown */
+.countdown-num {
+  font-size: 9rem; font-weight: 800; color: var(--primary); line-height: 1;
+  animation: pop 1s ease both;
+}
+@keyframes pop { from { transform: scale(1.4); opacity:.4; } to { transform: scale(1); opacity:1; } }
+.countdown-sub { font-size: 1.05rem; color: var(--text-muted); font-weight: 600; }
+
+/* Analyzing */
+.spinner {
+  width: 46px; height: 46px;
+  border: 4px solid var(--surface-2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.analyzing-text { font-size: 1rem; font-weight: 700; color: var(--text-muted); }
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .card { padding: 24px 18px; }
+  .mpt-big { font-size: 3.4rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     WELCOME
+════════════════════════════════════════════ -->
+<div id="screen-welcome" class="screen active">
+  <div class="card" style="text-align:center">
+    <div class="logo-orb">🧘</div>
+    <h1 class="title">Voice Exercise</h1>
+    <p class="subtitle">A gentle, guided exercise to help strengthen your voice. We'll measure your progress as you go.</p>
+  </div>
+
+  <div class="card" style="padding:24px 28px">
+    <div class="eyebrow" style="margin-bottom:14px">What to expect</div>
+    <div class="overview-items">
+      <div class="overview-item">
+        <div class="overview-icon">🌬️</div>
+        <div class="overview-text"><strong>5 short rounds</strong> of vocal exercise</div>
+      </div>
+      <div class="overview-item">
+        <div class="overview-icon">⏱️</div>
+        <div class="overview-text"><strong>10 seconds</strong> per round — just say "Ahhh"</div>
+      </div>
+      <div class="overview-item">
+        <div class="overview-icon">😌</div>
+        <div class="overview-text"><strong>Rest between each round</strong> — take your time</div>
+      </div>
+      <div class="overview-item">
+        <div class="overview-icon">📊</div>
+        <div class="overview-text"><strong>Results summary</strong> at the end</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="goInstructions()">Begin →</button>
+</div>
+
+<!-- ════════════════════════════════════════════
+     INSTRUCTIONS
+════════════════════════════════════════════ -->
+<div id="screen-instructions" class="screen">
+  <div class="card">
+    <h2 class="title" style="font-size:1.5rem">How to do it</h2>
+    <p class="subtitle" style="margin-bottom:4px">Follow these steps for each round</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-badge">1</div>
+        <div class="step-body">Sit comfortably and take a slow, <strong>deep breath in</strong> through your nose.</div>
+      </div>
+      <div class="step">
+        <div class="step-badge">2</div>
+        <div class="step-body">Say a steady <strong>"Ahhh"</strong> — as long, even, and clear as you can manage.</div>
+      </div>
+      <div class="step">
+        <div class="step-badge">3</div>
+        <div class="step-body">Watch the <strong>volume bar</strong> and keep your voice in the green zone.</div>
+      </div>
+      <div class="step">
+        <div class="step-badge">4</div>
+        <div class="step-body">When the round ends, <strong>breathe gently</strong> and rest before the next one.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="eyebrow" style="margin-bottom:10px;text-align:center">Volume zones</div>
+      <div class="zone-legend">
+        <div class="zone-pill zone-low">  <span class="zone-dot"></span> Too Quiet</div>
+        <div class="zone-pill zone-good"> <span class="zone-dot"></span> Just Right</div>
+        <div class="zone-pill zone-high"> <span class="zone-dot"></span> Too Loud</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="startExercise()">I'm Ready →</button>
+  <button class="btn btn-ghost" onclick="show('screen-welcome')">← Back</button>
+</div>
+
+<!-- ════════════════════════════════════════════
+     GAME
+════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+  <div class="round-dots">
+    <div class="dot" id="dot-1"></div>
+    <div class="dot" id="dot-2"></div>
+    <div class="dot" id="dot-3"></div>
+    <div class="dot" id="dot-4"></div>
+    <div class="dot" id="dot-5"></div>
+  </div>
+
+  <div class="stage">
+
+    <!-- Monk -->
+    <div class="monk-wrap" id="monk-wrap">
+      <div class="aura aura-outer" id="aura-outer"></div>
+      <div class="aura aura-inner" id="aura-inner"></div>
+
+      <svg class="monk-svg" id="monk-svg" viewBox="0 0 160 182" xmlns="http://www.w3.org/2000/svg">
+        <!-- Cushion shadow -->
+        <ellipse cx="80" cy="172" rx="55" ry="12" fill="rgba(43,50,68,.07)"/>
+        <!-- Cushion -->
+        <ellipse cx="80" cy="166" rx="50" ry="11" fill="#c8bcdf" opacity=".6"/>
+
+        <!-- Robe body -->
+        <path d="M44,166 C40,132 50,108 80,98 C110,108 120,132 116,166 Z" fill="#8190d4"/>
+        <!-- Robe shading -->
+        <path d="M60,166 C58,138 62,116 80,108 C98,116 102,138 100,166 Z" fill="rgba(255,255,255,.12)"/>
+
+        <!-- Arms / hands in mudra -->
+        <ellipse cx="80" cy="148" rx="27" ry="13" fill="#c5b9e0" opacity=".7"/>
+        <ellipse cx="80" cy="145" rx="23" ry="10" fill="#f5c896"/>
+
+        <!-- Head -->
+        <circle cx="80" cy="74" r="29" fill="#f5c896"/>
+
+        <!-- Ears -->
+        <ellipse cx="51" cy="77" rx="6.5" ry="9" fill="#f0b882"/>
+        <ellipse cx="109" cy="77" rx="6.5" ry="9" fill="#f0b882"/>
+
+        <!-- Eyes — peaceful closed arcs -->
+        <path d="M65,77 Q70,82 75,77" stroke="#8b6a50" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M85,77 Q90,82 95,77" stroke="#8b6a50" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+        <!-- Nose -->
+        <ellipse cx="80" cy="86" rx="3" ry="2.2" fill="#e8af7a" opacity=".6"/>
+
+        <!-- Smile -->
+        <path d="M73,94 Q80,101 87,94" stroke="#8b6a50" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+
+        <!-- Head ornament / top knot -->
+        <ellipse cx="80" cy="45" rx="8" ry="11" fill="#c5b9e0" opacity=".55"/>
+        <circle  cx="80" cy="44" r="4" fill="#8190d4" opacity=".5"/>
+      </svg>
+    </div>
+
+    <!-- Status -->
+    <div class="status-text" id="status-text">Get ready…</div>
+
+    <!-- Volume bar + Timer -->
+    <div class="controls-row">
+      <!-- Volume bar -->
+      <div class="vol-col">
+        <div class="vol-track">
+          <div class="vol-zones"></div>
+          <div class="vol-sep" style="bottom:72%"></div>
+          <div class="vol-sep" style="bottom:28%"></div>
+          <div class="vol-frost" id="vol-frost"></div>
+        </div>
+        <div class="vol-labels">
+          <div class="vl-high">Too<br>Loud</div>
+          <div class="vl-good">Just<br>Right</div>
+          <div class="vl-low">Too<br>Quiet</div>
+        </div>
+      </div>
+
+      <!-- Timer -->
+      <div class="timer-col">
+        <div class="round-label" id="round-label">Round 1 of 5</div>
+        <div style="height:8px"></div>
+        <div class="timer-ring">
+          <svg width="118" height="118" viewBox="0 0 118 118">
+            <circle cx="59" cy="59" r="52" fill="none" stroke="var(--surface-2)" stroke-width="8"/>
+            <circle id="timer-arc" cx="59" cy="59" r="52" fill="none" stroke-width="8"/>
+          </svg>
+          <div class="timer-center">
+            <div id="timer-num">10</div>
+            <div id="timer-label">seconds</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     COOLDOWN
+════════════════════════════════════════════ -->
+<div id="screen-cooldown" class="screen">
+  <div class="card">
+    <div style="font-size:2.6rem;text-align:center">✨</div>
+    <div style="height:2px"></div>
+    <h2 class="title" style="text-align:center;font-size:1.7rem">Well done!</h2>
+    <p class="subtitle" style="text-align:center" id="cooldown-sub">Take a few gentle breaths before the next round.</p>
+    <div style="height:6px"></div>
+    <div class="breathe-orb" style="margin:0 auto"></div>
+    <div style="height:4px"></div>
+    <div class="breathe-hint" style="text-align:center">Breathe in… breathe out…</div>
+    <div style="height:6px"></div>
+    <div class="cooldown-timer-num" style="text-align:center" id="cooldown-num">10</div>
+    <div class="eyebrow" style="text-align:center;margin-top:2px" id="cooldown-round-lbl">seconds until round 2</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     RESULTS
+════════════════════════════════════════════ -->
+<div id="screen-results" class="screen">
+  <div class="results-headline">Wonderful<br>work! 🌸</div>
+
+  <div class="mpt-card">
+    <div class="eyebrow">Average voice duration</div>
+    <div style="height:4px"></div>
+    <div class="mpt-big" id="res-mpt">—</div>
+    <div class="mpt-unit">seconds</div>
+    <div class="mpt-desc">How long you sustained "Ahhh" on average</div>
+  </div>
+
+  <div style="width:100%">
+    <div class="eyebrow" style="text-align:center;margin-bottom:12px">Round by round</div>
+    <div class="round-cards" id="round-cards"></div>
+  </div>
+
+  <div class="results-actions">
+    <button class="btn btn-primary" onclick="restart()">Try Again →</button>
+    <button class="btn btn-ghost" onclick="show('screen-welcome')">Back to Start</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     OVERLAYS
+════════════════════════════════════════════ -->
+<div class="overlay" id="overlay-countdown">
+  <div class="countdown-num" id="cdown-num">3</div>
+  <div class="countdown-sub">Round <span id="cdown-round">1</span> of 5 — say "Ahhh"</div>
+</div>
+
+<div class="overlay" id="overlay-analyzing">
+  <div class="spinner"></div>
+  <div class="analyzing-text">Analyzing your voice…</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Constants ────────────────────────────────────────────────────── */
+const TOTAL_ROUNDS      = 5;
+const ROUND_SEC         = 10;
+const COOLDOWN_SEC      = 10;
+const VOL_LOW           = 0.015;   // RMS below → too quiet
+const VOL_HIGH          = 0.28;    // RMS above → too loud
+const CIRCUMFERENCE     = 326.73;  // 2π×52
+const SESSION_ID        = 'demo_' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+/* ── State ────────────────────────────────────────────────────────── */
+let round         = 0;
+let roundResults  = [];
+let audioCtx      = null;
+let mediaStream   = null;
+let analyser      = null;
+let processor     = null;
+let source        = null;
+let pcmChunks     = [];
+let timerIv       = null;
+let volRafId      = null;
+let gamePhase     = 'idle'; // idle | countdown | recording | analyzing | cooldown | done
+
+/* ── Screen helpers ───────────────────────────────────────────────── */
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.remove('active');
+    s.style.animation = 'none';
+  });
+  const el = document.getElementById(id);
+  el.classList.add('active');
+  // restart animation
+  el.style.animation = 'none';
+  el.offsetHeight;
+  el.style.animation = '';
+}
+
+function showOverlay(id) { document.getElementById(id).classList.add('show'); }
+function hideOverlay(id) { document.getElementById(id).classList.remove('show'); }
+
+function setStatus(msg, tone) {
+  const el = document.getElementById('status-text');
+  el.textContent = msg;
+  el.className = 'status-text' + (tone ? ' st-' + tone : '');
+}
+
+/* ── Navigation ───────────────────────────────────────────────────── */
+function goInstructions() { show('screen-instructions'); }
+
+async function startExercise() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch {
+    alert('Microphone access is needed. Please allow it and try again.');
+    return;
+  }
+  round = 0;
+  roundResults = [];
+  show('screen-game');
+  nextRound();
+}
+
+function restart() {
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (audioCtx)    { audioCtx.close(); audioCtx = null; }
+  round = 0;
+  roundResults = [];
+  show('screen-welcome');
+}
+
+/* ── Round flow ───────────────────────────────────────────────────── */
+function nextRound() {
+  round++;
+  updateDots();
+  document.getElementById('round-label').textContent = `Round ${round} of ${TOTAL_ROUNDS}`;
+  setStatus('Get ready…', '');
+  doCountdown(round, startRound);
+}
+
+function updateDots() {
+  for (let i = 1; i <= TOTAL_ROUNDS; i++) {
+    const d = document.getElementById('dot-' + i);
+    d.className = 'dot' + (i < round ? ' done' : i === round ? ' current' : '');
+  }
+}
+
+/* ── Countdown overlay ────────────────────────────────────────────── */
+function doCountdown(roundNum, onDone) {
+  document.getElementById('cdown-round').textContent = roundNum;
+  let n = 3;
+  document.getElementById('cdown-num').textContent = n;
+  showOverlay('overlay-countdown');
+
+  const iv = setInterval(() => {
+    n--;
+    if (n <= 0) {
+      clearInterval(iv);
+      hideOverlay('overlay-countdown');
+      onDone();
+    } else {
+      const el = document.getElementById('cdown-num');
+      el.textContent = n;
+      el.style.animation = 'none';
+      el.offsetHeight;
+      el.style.animation = 'pop 1s ease both';
+    }
+  }, 1000);
+}
+
+/* ── Audio recording ──────────────────────────────────────────────── */
+function startRound() {
+  gamePhase = 'recording';
+  pcmChunks = [];
+
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  source    = audioCtx.createMediaStreamSource(mediaStream);
+  analyser  = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+
+  // Use a gain of 0 on the output to avoid speaker feedback
+  const silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0;
+
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = e => {
+    if (gamePhase === 'recording') {
+      pcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    }
+  };
+
+  source.connect(analyser);
+  analyser.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(audioCtx.destination);
+
+  startVolumeMeter();
+  startTimer(ROUND_SEC, finishRound);
+  setStatus('Say "Ahhh" steadily…', '');
+}
+
+function stopAudioNodes() {
+  if (source)    { source.disconnect();    source    = null; }
+  if (processor) { processor.disconnect(); processor = null; }
+  if (analyser)  { analyser.disconnect();  analyser  = null; }
+  if (volRafId)  { cancelAnimationFrame(volRafId); volRafId = null; }
+}
+
+/* ── Volume meter animation ───────────────────────────────────────── */
+function startVolumeMeter() {
+  const timeDomain = new Uint8Array(analyser.fftSize);
+  const frost    = document.getElementById('vol-frost');
+  const monkSvg  = document.getElementById('monk-svg');
+  const auraI    = document.getElementById('aura-inner');
+  const auraO    = document.getElementById('aura-outer');
+
+  function tick() {
+    if (!analyser || gamePhase !== 'recording') return;
+    analyser.getByteTimeDomainData(timeDomain);
+
+    // Compute RMS
+    let sum = 0;
+    for (let i = 0; i < timeDomain.length; i++) {
+      const v = (timeDomain[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / timeDomain.length);
+
+    // Volume bar: frost covers (1 - normalized) of bar from top
+    const normalized = Math.min(1, rms / (VOL_HIGH * 1.3));
+    frost.style.height = ((1 - normalized) * 100).toFixed(1) + '%';
+
+    // Zone detection
+    let zone;
+    if      (rms < VOL_LOW)  zone = 'low';
+    else if (rms < VOL_HIGH) zone = 'good';
+    else                     zone = 'high';
+
+    // Monk response
+    const auraColor = zone === 'good'
+      ? 'radial-gradient(circle, rgba(109,184,138,.45) 0%, transparent 70%)'
+      : zone === 'high'
+        ? 'radial-gradient(circle, rgba(217,139,120,.4) 0%, transparent 70%)'
+        : 'radial-gradient(circle, rgba(179,163,209,.4) 0%, transparent 70%)';
+
+    if (zone === 'good') {
+      monkSvg.className = 'monk-svg glow';
+      auraI.style.background = auraO.style.background = auraColor;
+      auraI.classList.add('show'); auraO.classList.add('show');
+      setStatus('Perfect — keep it steady!', 'good');
+    } else if (zone === 'high') {
+      monkSvg.className = 'monk-svg rattled';
+      auraI.style.background = auraO.style.background = auraColor;
+      auraI.classList.add('show'); auraO.classList.add('show');
+      setStatus('Soften your voice a little', 'high');
+    } else if (rms > VOL_LOW * 0.4) {
+      monkSvg.className = 'monk-svg';
+      auraI.style.background = auraO.style.background = auraColor;
+      auraI.classList.add('show'); auraO.classList.remove('show');
+      setStatus('A little louder please', 'low');
+    } else {
+      monkSvg.className = 'monk-svg';
+      auraI.classList.remove('show'); auraO.classList.remove('show');
+      setStatus('Say "Ahhh" steadily…', '');
+    }
+
+    volRafId = requestAnimationFrame(tick);
+  }
+  volRafId = requestAnimationFrame(tick);
+}
+
+/* ── Countdown timer ──────────────────────────────────────────────── */
+function startTimer(seconds, onDone) {
+  const arc  = document.getElementById('timer-arc');
+  const num  = document.getElementById('timer-num');
+  let left   = seconds;
+
+  arc.style.stroke = 'var(--primary)';
+  arc.style.strokeDashoffset = '0';
+  num.textContent = left;
+
+  timerIv = setInterval(() => {
+    left--;
+    const pct = left / seconds;
+    arc.style.strokeDashoffset = (CIRCUMFERENCE * (1 - pct)).toFixed(2);
+    num.textContent = left;
+
+    if (left <= 3 && gamePhase === 'recording') {
+      arc.style.stroke = 'var(--good)';
+    }
+    if (left <= 0) {
+      clearInterval(timerIv);
+      timerIv = null;
+      onDone();
+    }
+  }, 1000);
+}
+
+function clearTimer() {
+  if (timerIv) { clearInterval(timerIv); timerIv = null; }
+}
+
+/* ── Finish round ─────────────────────────────────────────────────── */
+async function finishRound() {
+  gamePhase = 'analyzing';
+  stopAudioNodes();
+  clearTimer();
+
+  // Reset visual state
+  document.getElementById('vol-frost').style.height = '100%';
+  document.getElementById('monk-svg').className     = 'monk-svg';
+  document.getElementById('aura-inner').classList.remove('show');
+  document.getElementById('aura-outer').classList.remove('show');
+  setStatus('', '');
+
+  showOverlay('overlay-analyzing');
+
+  const wav = buildWAV(pcmChunks, audioCtx ? audioCtx.sampleRate : 44100);
+  let metrics = {};
+
+  try {
+    const fd = new FormData();
+    fd.append('file', wav, 'round.wav');
+    const r = await fetch('/analyze', { method: 'POST', body: fd });
+    if (r.ok) metrics = await r.json();
+  } catch (e) {
+    console.warn('Analysis error:', e);
+  }
+
+  // Store to S3 (fire-and-forget — don't block UI on this)
+  (async () => {
+    try {
+      const fd2 = new FormData();
+      fd2.append('file', wav, `round_${round}.wav`);
+      fd2.append('session_id', SESSION_ID);
+      fd2.append('round_num', String(round));
+      fd2.append('metrics', JSON.stringify(metrics));
+      await fetch('/store', { method: 'POST', body: fd2 });
+    } catch {}
+  })();
+
+  roundResults.push(metrics);
+  hideOverlay('overlay-analyzing');
+
+  if (round < TOTAL_ROUNDS) {
+    showCooldown();
+  } else {
+    showResults();
+  }
+}
+
+/* ── Cooldown ─────────────────────────────────────────────────────── */
+function showCooldown() {
+  gamePhase = 'cooldown';
+  show('screen-cooldown');
+
+  const nextRoundNum = round + 1;
+  document.getElementById('cooldown-sub').textContent =
+    `Round ${nextRoundNum} of ${TOTAL_ROUNDS} coming up. Breathe gently.`;
+  document.getElementById('cooldown-round-lbl').textContent =
+    `seconds until round ${nextRoundNum}`;
+
+  let t = COOLDOWN_SEC;
+  document.getElementById('cooldown-num').textContent = t;
+
+  const iv = setInterval(() => {
+    t--;
+    document.getElementById('cooldown-num').textContent = t;
+    if (t <= 0) {
+      clearInterval(iv);
+      show('screen-game');
+      nextRound();
+    }
+  }, 1000);
+}
+
+/* ── Results ──────────────────────────────────────────────────────── */
+function showResults() {
+  gamePhase = 'done';
+
+  // Mark all dots done
+  for (let i = 1; i <= TOTAL_ROUNDS; i++) {
+    document.getElementById('dot-' + i).className = 'dot done';
+  }
+
+  const mpts   = roundResults.map(r => r.mpt_s).filter(v => v != null && v > 0);
+  const avgMpt = mpts.length ? mpts.reduce((a, b) => a + b, 0) / mpts.length : 0;
+  const bestMpt = mpts.length ? Math.max(...mpts) : 0;
+
+  document.getElementById('res-mpt').textContent = avgMpt > 0 ? avgMpt.toFixed(1) : '—';
+
+  const container = document.getElementById('round-cards');
+  container.innerHTML = '';
+  for (let i = 0; i < TOTAL_ROUNDS; i++) {
+    const mpt  = roundResults[i]?.mpt_s;
+    const best = mpt != null && mpt === bestMpt && mpts.length > 1;
+    const div  = document.createElement('div');
+    div.className = 'rc' + (best ? ' best' : '');
+    div.innerHTML = `
+      <div class="rc-label">Round ${i + 1}</div>
+      <div class="rc-val">${mpt != null ? mpt.toFixed(1) : '—'}</div>
+      <div class="rc-unit">sec</div>
+    `;
+    container.appendChild(div);
+  }
+
+  show('screen-results');
+}
+
+/* ── WAV encoder ──────────────────────────────────────────────────── */
+function buildWAV(chunks, sr) {
+  const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+  const pcm      = new Float32Array(totalLen);
+  let off        = 0;
+  for (const c of chunks) { pcm.set(c, off); off += c.length; }
+
+  const byteLen = pcm.length * 2;
+  const ab      = new ArrayBuffer(44 + byteLen);
+  const v       = new DataView(ab);
+  const ws      = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+
+  ws(0, 'RIFF');  v.setUint32(4, 36 + byteLen, true);
+  ws(8, 'WAVE');  ws(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);   // PCM
+  v.setUint16(22, 1, true);   // mono
+  v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, byteLen, true);
+
+  off = 44;
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+</script>
+
+</body>
+</html>
