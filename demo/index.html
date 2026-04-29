@@ -619,18 +619,17 @@ const CIRCUMFERENCE     = 326.73;  // 2π×52
 const SESSION_ID        = 'demo_' + Date.now().toString(36) + Math.random().toString(36).slice(2);
 
 /* ── State ────────────────────────────────────────────────────────── */
-let round         = 0;
-let roundResults  = [];
-let audioCtx      = null;
-let mediaStream   = null;
-let analyser      = null;
-let processor     = null;
-let source        = null;
-let silentGain    = null;
-let pcmChunks     = [];
-let timerIv       = null;
-let volRafId      = null;
-let gamePhase     = 'idle'; // idle | countdown | recording | analyzing | cooldown | done
+let round          = 0;
+let roundResults   = [];
+let audioCtx       = null;
+let mediaStream    = null;
+let analyser       = null;
+let source         = null;
+let mediaRecorder  = null;
+let recordedChunks = [];
+let timerIv        = null;
+let volRafId       = null;
+let gamePhase      = 'idle'; // idle | countdown | recording | analyzing | cooldown | done
 
 /* ── Screen helpers ───────────────────────────────────────────────── */
 function show(id) {
@@ -728,31 +727,20 @@ function doCountdown(roundNum, onDone) {
 
 /* ── Audio recording ──────────────────────────────────────────────── */
 function startRound() {
-  gamePhase = 'recording';
-  pcmChunks = [];
+  gamePhase      = 'recording';
+  recordedChunks = [];
 
-  // audioCtx was created (and resumed) in startExercise() during user gesture.
-  // Just reconnect the media stream for this round.
-  source    = audioCtx.createMediaStreamSource(mediaStream);
-  analyser  = audioCtx.createAnalyser();
+  source  = audioCtx.createMediaStreamSource(mediaStream);
+  analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
-
-  // Keep a very small non-zero gain so the browser doesn't optimise
-  // away the ScriptProcessor processing path.
-  silentGain = audioCtx.createGain();
-  silentGain.gain.value = 0.001;
-
-  processor = audioCtx.createScriptProcessor(4096, 1, 1);
-  processor.onaudioprocess = e => {
-    if (gamePhase === 'recording') {
-      pcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-    }
-  };
-
   source.connect(analyser);
-  analyser.connect(processor);
-  processor.connect(silentGain);
-  silentGain.connect(audioCtx.destination);
+  // AnalyserNode reads data without routing to destination — no output needed
+
+  mediaRecorder = new MediaRecorder(mediaStream);
+  mediaRecorder.ondataavailable = e => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.start();
 
   startVolumeMeter();
   startTimer(ROUND_SEC, finishRound);
@@ -760,11 +748,9 @@ function startRound() {
 }
 
 function stopAudioNodes() {
-  if (volRafId)   { cancelAnimationFrame(volRafId); volRafId   = null; }
-  if (processor)  { processor.disconnect();          processor  = null; }
-  if (analyser)   { analyser.disconnect();            analyser   = null; }
-  if (source)     { source.disconnect();              source     = null; }
-  if (silentGain) { silentGain.disconnect();          silentGain = null; }
+  if (volRafId) { cancelAnimationFrame(volRafId); volRafId = null; }
+  if (analyser) { analyser.disconnect(); analyser = null; }
+  if (source)   { source.disconnect();   source   = null; }
 }
 
 /* ── Volume meter animation ───────────────────────────────────────── */
@@ -864,8 +850,8 @@ function clearTimer() {
 /* ── Finish round ─────────────────────────────────────────────────── */
 async function finishRound() {
   gamePhase = 'analyzing';
-  stopAudioNodes();
   clearTimer();
+  stopAudioNodes(); // stop RAF, disconnect analyser/source
 
   // Reset visual state
   document.getElementById('vol-frost').style.height = '100%';
@@ -876,7 +862,29 @@ async function finishRound() {
 
   showOverlay('overlay-analyzing');
 
-  const wav = buildWAV(pcmChunks, audioCtx ? audioCtx.sampleRate : 44100);
+  // Collect recorded audio — wait for MediaRecorder to flush its final chunk
+  const blob = await new Promise(resolve => {
+    const finish = () => resolve(new Blob(recordedChunks, { type: mediaRecorder ? (mediaRecorder.mimeType || 'audio/webm') : 'audio/webm' }));
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      finish();
+    } else {
+      mediaRecorder.onstop = finish;
+      mediaRecorder.stop();
+    }
+  });
+  mediaRecorder = null;
+
+  // Decode compressed audio (WebM/OGG) to raw PCM via AudioContext
+  let wav;
+  try {
+    const arrayBuf = await blob.arrayBuffer();
+    const decoded  = await audioCtx.decodeAudioData(arrayBuf);
+    wav = buildWAV([decoded.getChannelData(0)], decoded.sampleRate);
+  } catch (e) {
+    console.warn('Audio decode failed:', e);
+    wav = buildWAV([], audioCtx ? audioCtx.sampleRate : 44100);
+  }
+
   let metrics = {};
 
   // Analysis with a 20s timeout — app always progresses even if server is slow.
