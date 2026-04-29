@@ -362,7 +362,9 @@ body {
   animation: spin .75s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.analyzing-text { font-size: 1rem; font-weight: 700; color: var(--text-muted); }
+.analyzing-text  { font-size: 1rem; font-weight: 700; color: var(--text-muted); }
+.analyzing-stage { font-size: .82rem; color: var(--text-light); margin-top: 2px; transition: color .2s; }
+.analyzing-stage.ok { color: var(--good); }
 
 /* ══════════════════════════════════════════════
    RESPONSIVE
@@ -600,7 +602,9 @@ body {
 
 <div class="overlay" id="overlay-analyzing">
   <div class="spinner"></div>
-  <div class="analyzing-text">Analyzing your voice…</div>
+  <div class="analyzing-text">Processing…</div>
+  <div class="analyzing-stage" id="analyzing-stage">Starting…</div>
+  <button class="btn btn-ghost" id="skip-btn" style="display:none;margin-top:6px;font-size:.85rem" onclick="skipAnalysis()">Skip this round →</button>
 </div>
 
 <!-- ════════════════════════════════════════════
@@ -848,12 +852,21 @@ function clearTimer() {
 }
 
 /* ── Finish round ─────────────────────────────────────────────────── */
+let _skipAbort = null;
+function skipAnalysis() { if (_skipAbort) _skipAbort(); }
+
+function setStage(msg, ok = false) {
+  const el = document.getElementById('analyzing-stage');
+  el.textContent = msg;
+  el.className = 'analyzing-stage' + (ok ? ' ok' : '');
+  console.log('[stage]', msg);
+}
+
 async function finishRound() {
   gamePhase = 'analyzing';
   clearTimer();
-  stopAudioNodes(); // stop RAF, disconnect analyser/source
+  stopAudioNodes();
 
-  // Reset visual state
   document.getElementById('vol-frost').style.height = '100%';
   document.getElementById('monk-svg').className     = 'monk-svg';
   document.getElementById('aura-inner').classList.remove('show');
@@ -861,47 +874,78 @@ async function finishRound() {
   setStatus('', '');
 
   showOverlay('overlay-analyzing');
+  const skipBtn = document.getElementById('skip-btn');
+  skipBtn.style.display = 'none';
+  // Reveal skip button after 6 s so user can always escape
+  const skipReveal = setTimeout(() => { skipBtn.style.display = ''; }, 6000);
 
-  // Collect recorded audio — wait for MediaRecorder to flush its final chunk
-  const blob = await new Promise(resolve => {
-    const finish = () => resolve(new Blob(recordedChunks, { type: mediaRecorder ? (mediaRecorder.mimeType || 'audio/webm') : 'audio/webm' }));
-    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-      finish();
-    } else {
-      mediaRecorder.onstop = finish;
-      mediaRecorder.stop();
-    }
-  });
-  mediaRecorder = null;
+  // ── Step 1: collect MediaRecorder chunks ──────────────────────────
+  setStage('Collecting audio…');
+  let blob;
+  try {
+    blob = await Promise.race([
+      new Promise(resolve => {
+        const mimeType = mediaRecorder ? (mediaRecorder.mimeType || 'audio/webm') : 'audio/webm';
+        const finish   = () => resolve(new Blob(recordedChunks, { type: mimeType }));
+        if (!mediaRecorder || mediaRecorder.state === 'inactive') { finish(); }
+        else { mediaRecorder.onstop = finish; mediaRecorder.stop(); }
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('recorder timed out')), 4000))
+    ]);
+    console.log('[audio] blob size:', blob.size, 'type:', blob.type);
+  } catch (e) {
+    console.warn('[audio] collect failed:', e.message);
+    blob = new Blob([], { type: 'audio/webm' });
+  } finally {
+    if (mediaRecorder) { try { mediaRecorder.stop(); } catch {} }
+    mediaRecorder = null;
+  }
 
-  // Decode compressed audio (WebM/OGG) to raw PCM via AudioContext
+  // ── Step 2: decode to PCM ─────────────────────────────────────────
+  setStage('Decoding audio…');
   let wav;
   try {
     const arrayBuf = await blob.arrayBuffer();
     const decoded  = await audioCtx.decodeAudioData(arrayBuf);
     wav = buildWAV([decoded.getChannelData(0)], decoded.sampleRate);
+    console.log(`[audio] decoded ${decoded.duration.toFixed(2)}s at ${decoded.sampleRate}Hz`);
+    setStage(`Audio ready (${decoded.duration.toFixed(1)}s)`, true);
   } catch (e) {
-    console.warn('Audio decode failed:', e);
+    console.warn('[audio] decode failed:', e);
+    setStage('Audio decode failed — skipping analysis');
     wav = buildWAV([], audioCtx ? audioCtx.sampleRate : 44100);
   }
 
+  // ── Step 3: analyze ───────────────────────────────────────────────
   let metrics = {};
-
-  // Analysis with a 20s timeout — app always progresses even if server is slow.
   try {
+    setStage('Analyzing voice…');
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 20000);
+    _skipAbort = () => ctrl.abort();
+    const autoAbort = setTimeout(() => ctrl.abort(), 20000);
     try {
       const fd = new FormData();
       fd.append('file', wav, 'round.wav');
       const r = await fetch('/analyze', { method: 'POST', body: fd, signal: ctrl.signal });
-      if (r.ok) metrics = await r.json();
+      if (r.ok) {
+        metrics = await r.json();
+        setStage(`Done  ✓  MPT ${metrics.mpt_s != null ? metrics.mpt_s.toFixed(1) + 's' : '—'}`, true);
+        console.log('[metrics]', metrics);
+      } else {
+        setStage(`Server error ${r.status}`);
+        console.warn('[analyze] HTTP', r.status);
+      }
     } finally {
-      clearTimeout(tid);
+      clearTimeout(autoAbort);
+      _skipAbort = null;
     }
   } catch (e) {
-    console.warn('Analysis skipped:', e.message);
+    setStage(e.name === 'AbortError' ? 'Timed out — moving on' : `Error: ${e.message}`);
+    console.warn('[analyze] skipped:', e.message);
   }
+
+  clearTimeout(skipReveal);
+  skipBtn.style.display = 'none';
 
   // Store to S3 — fire-and-forget, never blocks the UI.
   (async () => {
