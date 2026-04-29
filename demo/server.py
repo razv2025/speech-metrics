@@ -17,6 +17,9 @@ from fastapi.responses import FileResponse
 
 # ── Auth ──────────────────────────────────────────────────────────────────
 _APP_PASSWORD = os.environ.get("APP_PASSWORD", "demo")
+# These endpoints are called from JS fetch() — exempt from browser Basic Auth
+# to avoid Chrome's native auth dialog blocking the UI.
+_NO_AUTH_PATHS = {"/health", "/analyze", "/store"}
 
 
 def _check_auth(auth_header: str) -> bool:
@@ -183,7 +186,7 @@ app = FastAPI()
 
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
-    if request.url.path == "/health":
+    if request.url.path in _NO_AUTH_PATHS:
         return await call_next(request)
     if _check_auth(request.headers.get("Authorization", "")):
         return await call_next(request)

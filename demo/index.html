@@ -626,6 +626,7 @@ let mediaStream   = null;
 let analyser      = null;
 let processor     = null;
 let source        = null;
+let silentGain    = null;
 let pcmChunks     = [];
 let timerIv       = null;
 let volRafId      = null;
@@ -664,6 +665,14 @@ async function startExercise() {
     alert('Microphone access is needed. Please allow it and try again.');
     return;
   }
+  // Create and unlock AudioContext here — we're inside a user gesture,
+  // so the browser allows it to start immediately (no autoplay suspension).
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state !== 'running') {
+    await audioCtx.resume();
+  }
   round = 0;
   roundResults = [];
   show('screen-game');
@@ -672,7 +681,7 @@ async function startExercise() {
 
 function restart() {
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
-  if (audioCtx)    { audioCtx.close(); audioCtx = null; }
+  if (audioCtx)    { audioCtx.close().catch(() => {}); audioCtx = null; }
   round = 0;
   roundResults = [];
   show('screen-welcome');
@@ -722,18 +731,16 @@ function startRound() {
   gamePhase = 'recording';
   pcmChunks = [];
 
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-
+  // audioCtx was created (and resumed) in startExercise() during user gesture.
+  // Just reconnect the media stream for this round.
   source    = audioCtx.createMediaStreamSource(mediaStream);
   analyser  = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
 
-  // Use a gain of 0 on the output to avoid speaker feedback
-  const silentGain = audioCtx.createGain();
-  silentGain.gain.value = 0;
+  // Keep a very small non-zero gain so the browser doesn't optimise
+  // away the ScriptProcessor processing path.
+  silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0.001;
 
   processor = audioCtx.createScriptProcessor(4096, 1, 1);
   processor.onaudioprocess = e => {
@@ -753,10 +760,11 @@ function startRound() {
 }
 
 function stopAudioNodes() {
-  if (source)    { source.disconnect();    source    = null; }
-  if (processor) { processor.disconnect(); processor = null; }
-  if (analyser)  { analyser.disconnect();  analyser  = null; }
-  if (volRafId)  { cancelAnimationFrame(volRafId); volRafId = null; }
+  if (volRafId)   { cancelAnimationFrame(volRafId); volRafId   = null; }
+  if (processor)  { processor.disconnect();          processor  = null; }
+  if (analyser)   { analyser.disconnect();            analyser   = null; }
+  if (source)     { source.disconnect();              source     = null; }
+  if (silentGain) { silentGain.disconnect();          silentGain = null; }
 }
 
 /* ── Volume meter animation ───────────────────────────────────────── */
@@ -871,16 +879,23 @@ async function finishRound() {
   const wav = buildWAV(pcmChunks, audioCtx ? audioCtx.sampleRate : 44100);
   let metrics = {};
 
+  // Analysis with a 20s timeout — app always progresses even if server is slow.
   try {
-    const fd = new FormData();
-    fd.append('file', wav, 'round.wav');
-    const r = await fetch('/analyze', { method: 'POST', body: fd });
-    if (r.ok) metrics = await r.json();
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const fd = new FormData();
+      fd.append('file', wav, 'round.wav');
+      const r = await fetch('/analyze', { method: 'POST', body: fd, signal: ctrl.signal });
+      if (r.ok) metrics = await r.json();
+    } finally {
+      clearTimeout(tid);
+    }
   } catch (e) {
-    console.warn('Analysis error:', e);
+    console.warn('Analysis skipped:', e.message);
   }
 
-  // Store to S3 (fire-and-forget — don't block UI on this)
+  // Store to S3 — fire-and-forget, never blocks the UI.
   (async () => {
     try {
       const fd2 = new FormData();
