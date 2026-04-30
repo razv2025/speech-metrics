@@ -384,16 +384,6 @@ body {
   .mpt-big { font-size: 3.4rem; }
 }
 
-/* Debug log */
-#debug-log {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  max-height: 160px; overflow-y: auto;
-  background: rgba(0,0,0,.82); color: #7fff7f;
-  font-size: 11px; font-family: monospace; line-height: 1.5;
-  padding: 6px 10px; z-index: 500;
-  pointer-events: none; white-space: pre-wrap; word-break: break-all;
-}
-#debug-log .err { color: #ff7070; }
 </style>
 </head>
 <body>
@@ -617,7 +607,6 @@ body {
      OVERLAYS
 ════════════════════════════════════════════ -->
 <div id="error-banner"></div>
-<div id="debug-log"></div>
 
 <div class="overlay" id="overlay-countdown">
   <div class="countdown-num" id="cdown-num">3</div>
@@ -637,43 +626,6 @@ body {
 <script>
 'use strict';
 
-/* ── On-screen debug log ──────────────────────────────────────────── */
-const _dbgEl = document.getElementById('debug-log');
-function dbg(...args) {
-  const msg = args.map(a =>
-    a instanceof Error ? (a.message + '\n' + a.stack) :
-    typeof a === 'object' ? JSON.stringify(a) : String(a)
-  ).join(' ');
-  console.log(...args);
-  if (_dbgEl) {
-    const line = document.createElement('div');
-    line.textContent = msg;
-    _dbgEl.appendChild(line);
-    while (_dbgEl.children.length > 30) _dbgEl.removeChild(_dbgEl.firstChild);
-    _dbgEl.scrollTop = _dbgEl.scrollHeight;
-  }
-}
-function dbgErr(...args) {
-  const msg = args.map(a =>
-    a instanceof Error ? (a.message + ' @ ' + (a.stack?.split('\n')[1] || '')) :
-    typeof a === 'object' ? JSON.stringify(a) : String(a)
-  ).join(' ');
-  console.error(...args);
-  if (_dbgEl) {
-    const line = document.createElement('div');
-    line.className = 'err';
-    line.textContent = '✖ ' + msg;
-    _dbgEl.appendChild(line);
-    while (_dbgEl.children.length > 30) _dbgEl.removeChild(_dbgEl.firstChild);
-    _dbgEl.scrollTop = _dbgEl.scrollHeight;
-  }
-}
-window.onerror = (msg, src, ln, col, err) => {
-  dbgErr('GLOBAL: ' + msg + (ln ? ' L' + ln : ''));
-};
-window.onunhandledrejection = e => {
-  dbgErr('UNHANDLED: ' + (e.reason?.message || String(e.reason)));
-};
 
 /* ── Constants ────────────────────────────────────────────────────── */
 const TOTAL_ROUNDS      = 5;
@@ -722,7 +674,7 @@ function setStatus(msg, tone) {
 
 /* ── Error display ────────────────────────────────────────────────── */
 function showError(msg) {
-  dbgErr(msg);
+  console.error(msg);
   const el = document.getElementById('error-banner');
   el.textContent = '⚠ ' + msg;
   el.style.display = 'block';
@@ -738,17 +690,17 @@ async function startExercise() {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   } catch (e) {
     alert('Microphone access is needed. Please allow it and try again.');
-    dbgErr('getUserMedia: ' + e.message);
+    console.error('getUserMedia: ' + e.message);
     return;
   }
-  dbg('mic ok, tracks:', mediaStream.getAudioTracks().length);
+  console.log('mic ok, tracks:', mediaStream.getAudioTracks().length);
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   if (audioCtx.state !== 'running') {
     await audioCtx.resume();
   }
-  dbg('audioCtx:', audioCtx.state);
+  console.log('audioCtx:', audioCtx.state);
   // Silence-routed oscillator keeps the AudioContext from auto-suspending
   // during the 3 s countdown before startRound() connects the mic stream.
   try {
@@ -758,9 +710,9 @@ async function startExercise() {
     osc.connect(keepAlive);
     keepAlive.connect(audioCtx.destination);
     osc.start();
-    dbg('keep-alive osc started');
+    console.log('keep-alive osc started');
   } catch (e) {
-    dbgErr('keepalive: ' + e.message);
+    console.error('keepalive: ' + e.message);
   }
   round = 0;
   roundResults = [];
@@ -779,7 +731,7 @@ function restart() {
 /* ── Round flow ───────────────────────────────────────────────────── */
 function nextRound() {
   round++;
-  dbg('nextRound →', round);
+  console.log('nextRound →', round);
   updateDots();
   document.getElementById('round-label').textContent = `Round ${round} of ${TOTAL_ROUNDS}`;
   setStatus('Get ready…', '');
@@ -821,10 +773,10 @@ async function startRound() {
   gamePhase      = 'recording';
   recordedChunks = [];
 
-  dbg('startRound ctx:', audioCtx.state, 'stream:', mediaStream?.active, 'tracks:', mediaStream?.getAudioTracks().length);
+  console.log('startRound ctx:', audioCtx.state, 'stream:', mediaStream?.active, 'tracks:', mediaStream?.getAudioTracks().length);
   // Re-resume if the browser suspended the context during the countdown
   if (audioCtx.state !== 'running') {
-    try { await audioCtx.resume(); dbg('ctx resumed:', audioCtx.state); } catch (e) { dbgErr('resume: ' + e.message); }
+    try { await audioCtx.resume(); console.log('ctx resumed:', audioCtx.state); } catch (e) { console.error('resume: ' + e.message); }
   }
 
   try {
@@ -832,7 +784,7 @@ async function startRound() {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
     source.connect(analyser);
-    dbg('audio graph ok');
+    console.log('audio graph ok');
   } catch (e) {
     showError('Audio graph error: ' + e.message);
   }
@@ -844,7 +796,7 @@ async function startRound() {
       if (e.data.size > 0) recordedChunks.push(e.data);
     };
     mediaRecorder.start();
-    dbg('MediaRecorder:', mediaRecorder.state, mediaRecorder.mimeType);
+    console.log('MediaRecorder:', mediaRecorder.state, mediaRecorder.mimeType);
   } catch (e) {
     showError('Recorder failed: ' + e.message);
   }
@@ -943,7 +895,7 @@ function startTimer(seconds, onDone) {
       arc.style.stroke = 'var(--good)';
     }
     if (left <= 0) {
-      dbg('timer done → finishRound');
+      console.log('timer done → finishRound');
       clearInterval(timerIv);
       timerIv = null;
       onDone();
@@ -963,11 +915,11 @@ function setStage(msg, ok = false) {
   const el = document.getElementById('analyzing-stage');
   el.textContent = msg;
   el.className = 'analyzing-stage' + (ok ? ' ok' : '');
-  dbg('stage:', msg);
+  console.log('stage:', msg);
 }
 
 async function finishRound() {
-  dbg('finishRound start, round', round);
+  console.log('finishRound start, round', round);
   gamePhase = 'analyzing';
   clearTimer();
   stopAudioNodes();
@@ -997,9 +949,9 @@ async function finishRound() {
       }),
       new Promise((_, rej) => setTimeout(() => rej(new Error('recorder timed out')), 4000))
     ]);
-    dbg('blob size:', blob.size, 'type:', blob.type);
+    console.log('blob size:', blob.size, 'type:', blob.type);
   } catch (e) {
-    dbgErr('collect: ' + e.message);
+    console.error('collect: ' + e.message);
     blob = new Blob([], { type: 'audio/webm' });
   } finally {
     if (mediaRecorder) { try { mediaRecorder.stop(); } catch {} }
@@ -1013,10 +965,10 @@ async function finishRound() {
     const arrayBuf = await blob.arrayBuffer();
     const decoded  = await audioCtx.decodeAudioData(arrayBuf);
     wav = buildWAV([decoded.getChannelData(0)], decoded.sampleRate);
-    dbg('decoded', decoded.duration.toFixed(2) + 's', decoded.sampleRate + 'Hz');
+    console.log('decoded', decoded.duration.toFixed(2) + 's', decoded.sampleRate + 'Hz');
     setStage(`Audio ready (${decoded.duration.toFixed(1)}s)`, true);
   } catch (e) {
-    dbgErr('decode: ' + e.message);
+    console.error('decode: ' + e.message);
     setStage('Audio decode failed — skipping analysis');
     wav = buildWAV([], audioCtx ? audioCtx.sampleRate : 44100);
   }
@@ -1035,10 +987,10 @@ async function finishRound() {
       if (r.ok) {
         metrics = await r.json();
         setStage(`Done  ✓  MPT ${metrics.mpt_s != null ? metrics.mpt_s.toFixed(1) + 's' : '—'}`, true);
-        dbg('metrics ok, mpt:', metrics.mpt_s);
+        console.log('metrics ok, mpt:', metrics.mpt_s);
       } else {
         setStage(`Server error ${r.status}`);
-        dbgErr('analyze HTTP ' + r.status);
+        console.error('analyze HTTP ' + r.status);
       }
     } finally {
       clearTimeout(autoAbort);
@@ -1046,7 +998,7 @@ async function finishRound() {
     }
   } catch (e) {
     setStage(e.name === 'AbortError' ? 'Timed out — moving on' : `Error: ${e.message}`);
-    dbgErr('analyze: ' + e.message);
+    console.error('analyze: ' + e.message);
   }
 
   clearTimeout(skipReveal);
