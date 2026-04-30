@@ -231,7 +231,7 @@ body {
   position: absolute;
   top: 0; left: 0; right: 0;
   background: rgba(245,243,238,.82);
-  border-radius: 14px;
+  border-radius: 14px 14px 0 0;
   transition: height .07s ease;
   height: 100%;
 }
@@ -243,12 +243,13 @@ body {
   background: rgba(255,255,255,.7);
 }
 
+.vol-with-labels { display: flex; align-items: stretch; gap: 7px; }
 .vol-labels {
   display: flex; flex-direction: column;
   justify-content: space-between;
   height: 188px;
-  font-size: .66rem; font-weight: 700;
-  text-align: center; line-height: 1.3;
+  font-size: .64rem; font-weight: 700;
+  text-align: right; line-height: 1.3;
   padding: 4px 0;
 }
 .vl-high { color: var(--too-high); }
@@ -527,16 +528,18 @@ body {
     <div class="controls-row">
       <!-- Volume bar -->
       <div class="vol-col">
-        <div class="vol-track">
-          <div class="vol-zones"></div>
-          <div class="vol-sep" style="bottom:72%"></div>
-          <div class="vol-sep" style="bottom:28%"></div>
-          <div class="vol-frost" id="vol-frost"></div>
-        </div>
-        <div class="vol-labels">
-          <div class="vl-high">Too<br>Loud</div>
-          <div class="vl-good">Just<br>Right</div>
-          <div class="vl-low">Too<br>Quiet</div>
+        <div class="vol-with-labels">
+          <div class="vol-labels">
+            <div class="vl-high">Too<br>Loud</div>
+            <div class="vl-good">Just<br>Right</div>
+            <div class="vl-low">Too<br>Quiet</div>
+          </div>
+          <div class="vol-track">
+            <div class="vol-zones"></div>
+            <div class="vol-sep" style="bottom:72%"></div>
+            <div class="vol-sep" style="bottom:28%"></div>
+            <div class="vol-frost" id="vol-frost"></div>
+          </div>
         </div>
       </div>
 
@@ -735,7 +738,11 @@ function nextRound() {
   updateDots();
   document.getElementById('round-label').textContent = `Round ${round} of ${TOTAL_ROUNDS}`;
   setStatus('Get ready…', '');
-  doCountdown(round, startRound);
+  if (round === 1) {
+    doCountdown(round, startRound);
+  } else {
+    startRound();
+  }
 }
 
 function updateDots() {
@@ -795,7 +802,7 @@ async function startRound() {
     mediaRecorder.ondataavailable = e => {
       if (e.data.size > 0) recordedChunks.push(e.data);
     };
-    mediaRecorder.start();
+    mediaRecorder.start(250); // flush chunks every 250 ms so stop() gets less data
     console.log('MediaRecorder:', mediaRecorder.state, mediaRecorder.mimeType);
   } catch (e) {
     showError('Recorder failed: ' + e.message);
@@ -939,23 +946,25 @@ async function finishRound() {
   // ── Step 1: collect MediaRecorder chunks ──────────────────────────
   setStage('Collecting audio…');
   let blob;
+  const mr = mediaRecorder;
+  mediaRecorder = null;
   try {
     blob = await Promise.race([
       new Promise(resolve => {
-        const mimeType = mediaRecorder ? (mediaRecorder.mimeType || 'audio/webm') : 'audio/webm';
+        const mimeType = mr ? (mr.mimeType || 'audio/webm') : 'audio/webm';
         const finish   = () => resolve(new Blob(recordedChunks, { type: mimeType }));
-        if (!mediaRecorder || mediaRecorder.state === 'inactive') { finish(); }
-        else { mediaRecorder.onstop = finish; mediaRecorder.stop(); }
+        if (!mr || mr.state === 'inactive') { finish(); }
+        else {
+          mr.addEventListener('stop', finish, { once: true });
+          mr.stop();
+        }
       }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('recorder timed out')), 4000))
+      new Promise((_, rej) => setTimeout(() => rej(new Error('recorder timed out')), 5000))
     ]);
     console.log('blob size:', blob.size, 'type:', blob.type);
   } catch (e) {
     console.error('collect: ' + e.message);
-    blob = new Blob([], { type: 'audio/webm' });
-  } finally {
-    if (mediaRecorder) { try { mediaRecorder.stop(); } catch {} }
-    mediaRecorder = null;
+    blob = new Blob(recordedChunks.length ? recordedChunks : [], { type: 'audio/webm' });
   }
 
   // ── Step 2: decode to PCM ─────────────────────────────────────────
