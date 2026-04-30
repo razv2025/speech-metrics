@@ -898,22 +898,22 @@ function startVolumeMeter() {
         : 'radial-gradient(circle, rgba(179,163,209,.4) 0%, transparent 70%)';
 
     if (zone === 'good') {
-      monkSvg.className = 'monk-svg glow';
+      monkSvg.setAttribute('class', 'monk-svg glow');
       auraI.style.background = auraO.style.background = auraColor;
       auraI.classList.add('show'); auraO.classList.add('show');
       setStatus('Perfect — keep it steady!', 'good');
     } else if (zone === 'high') {
-      monkSvg.className = 'monk-svg rattled';
+      monkSvg.setAttribute('class', 'monk-svg rattled');
       auraI.style.background = auraO.style.background = auraColor;
       auraI.classList.add('show'); auraO.classList.add('show');
       setStatus('Soften your voice a little', 'high');
     } else if (rms > VOL_LOW * 0.4) {
-      monkSvg.className = 'monk-svg';
+      monkSvg.setAttribute('class', 'monk-svg');
       auraI.style.background = auraO.style.background = auraColor;
       auraI.classList.add('show'); auraO.classList.remove('show');
       setStatus('A little louder please', 'low');
     } else {
-      monkSvg.className = 'monk-svg';
+      monkSvg.setAttribute('class', 'monk-svg');
       auraI.classList.remove('show'); auraO.classList.remove('show');
       setStatus('Say "Ahhh" steadily…', '');
     }
@@ -973,7 +973,7 @@ async function finishRound() {
   stopAudioNodes();
 
   document.getElementById('vol-frost').style.height = '100%';
-  document.getElementById('monk-svg').className     = 'monk-svg';
+  document.getElementById('monk-svg').setAttribute('class', 'monk-svg');
   document.getElementById('aura-inner').classList.remove('show');
   document.getElementById('aura-outer').classList.remove('show');
   setStatus('', '');
